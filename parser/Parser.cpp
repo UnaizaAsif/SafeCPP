@@ -104,12 +104,21 @@ std::shared_ptr<Program> Parser::parseProgram() {
     auto program = std::make_shared<Program>();
     
     while (currentToken().type != TokenType::END_OF_FILE) {
-        // Skip newlines at top level
+        // Skip newlines
         while (match(TokenType::NEWLINE)) {}
         
         if (currentToken().type == TokenType::END_OF_FILE) break;
         
         try {
+            // Skip preprocessor directives
+            if (currentToken().type == TokenType::INCLUDE ||
+                currentToken().type == TokenType::DEFINE ||
+                currentToken().type == TokenType::IFNDEF ||
+                currentToken().type == TokenType::ENDIF) {
+                skipPreprocessor();
+                continue;
+            }
+            
             auto decl = parseDeclaration();
             if (decl) {
                 program->declarations.push_back(decl);
@@ -122,10 +131,45 @@ std::shared_ptr<Program> Parser::parseProgram() {
     return program;
 }
 
+std::shared_ptr<ASTNode> Parser::skipPreprocessor() {
+    // Skip preprocessor directive tokens
+    while (currentToken().type != TokenType::NEWLINE && 
+           currentToken().type != TokenType::END_OF_FILE) {
+        advance();
+    }
+    match(TokenType::NEWLINE);
+    
+    return std::make_shared<Statement>();
+}
+
 std::shared_ptr<ASTNode> Parser::parseDeclaration() {
-    // Check for include statement
-    if (match(TokenType::INCLUDE)) {
-        return parseIncludeStmt();
+    // Skip newlines
+    while (match(TokenType::NEWLINE)) {}
+    
+    // Check for class declaration
+    if (currentToken().type == TokenType::CLASS || currentToken().type == TokenType::STRUCT) {
+        return parseClassDecl();
+    }
+    
+    // Check for namespace declaration
+    if (currentToken().type == TokenType::NAMESPACE) {
+        return parseNamespaceDecl();
+    }
+    
+    // Check for template declaration
+    if (currentToken().type == TokenType::TEMPLATE) {
+        advance(); // Skip 'template'
+        if (match(TokenType::LESS_THAN)) {
+            // Skip template parameters
+            int depth = 1;
+            while (depth > 0 && currentToken().type != TokenType::END_OF_FILE) {
+                if (currentToken().type == TokenType::LESS_THAN) depth++;
+                if (currentToken().type == TokenType::GREATER_THAN) depth--;
+                advance();
+            }
+        }
+        // Parse the actual declaration following template
+        return parseDeclaration();
     }
     
     // Check for let declaration
@@ -133,8 +177,101 @@ std::shared_ptr<ASTNode> Parser::parseDeclaration() {
         return parseLetDecl();
     }
     
-    // Check for function or variable declaration
-    // Need to distinguish based on pattern
+    // Skip access modifiers at namespace level
+    if (currentToken().type == TokenType::PUBLIC || 
+        currentToken().type == TokenType::PRIVATE || 
+        currentToken().type == TokenType::PROTECTED) {
+        advance();
+        if (match(TokenType::COLON)) {
+            // Access modifier with colon - skip it
+            return std::make_shared<Statement>();
+        }
+    }
+    
+    // Try to parse function or variable declaration
+    return parseFunctionOrVariable();
+}
+
+std::shared_ptr<ASTNode> Parser::parseClassDecl() {
+    bool isFinal = false;
+    if (currentToken().type == TokenType::FINAL) {
+        isFinal = true;
+        advance();
+    }
+    
+    advance(); // Skip CLASS or STRUCT
+    
+    auto classDecl = std::make_shared<Statement>();
+    classDecl->line = currentToken().line;
+    
+    // Class name
+    if (currentToken().type == TokenType::IDENTIFIER) {
+        advance();
+    }
+    
+    // Optional inheritance
+    if (match(TokenType::COLON)) {
+        // Skip inheritance list until we hit {
+        while (currentToken().type != TokenType::LEFT_BRACE && 
+               currentToken().type != TokenType::END_OF_FILE) {
+            advance();
+        }
+    }
+    
+    // Class body
+    if (match(TokenType::LEFT_BRACE)) {
+        int braceDepth = 1;
+        while (braceDepth > 0 && currentToken().type != TokenType::END_OF_FILE) {
+            if (currentToken().type == TokenType::LEFT_BRACE) braceDepth++;
+            if (currentToken().type == TokenType::RIGHT_BRACE) braceDepth--;
+            
+            if (braceDepth > 0) {
+                advance();
+            } else {
+                advance(); // Consume closing }
+            }
+        }
+    }
+    match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    
+    return classDecl;
+}
+
+std::shared_ptr<ASTNode> Parser::parseNamespaceDecl() {
+    expect(TokenType::NAMESPACE);
+    
+    auto nsDecl = std::make_shared<Statement>();
+    nsDecl->line = currentToken().line;
+    
+    // Namespace name
+    if (currentToken().type == TokenType::IDENTIFIER) {
+        advance();
+    }
+    
+    // Namespace body
+    if (match(TokenType::LEFT_BRACE)) {
+        int braceDepth = 1;
+        while (braceDepth > 0 && currentToken().type != TokenType::END_OF_FILE) {
+            if (currentToken().type == TokenType::LEFT_BRACE) braceDepth++;
+            if (currentToken().type == TokenType::RIGHT_BRACE) braceDepth--;
+            
+            if (braceDepth > 0) {
+                advance();
+            } else {
+                advance(); // Consume closing }
+            }
+        }
+    }
+    
+    return nsDecl;
+}
+
+std::shared_ptr<ASTNode> Parser::parseFunctionOrVariable() {
+    // Skip virtual and static modifiers
+    while (currentToken().type == TokenType::VIRTUAL || 
+           currentToken().type == TokenType::STATIC) {
+        advance();
+    }
     
     // Look ahead to determine if it's a function or variable
     size_t lookAhead = position;
@@ -146,8 +283,57 @@ std::shared_ptr<ASTNode> Parser::parseDeclaration() {
         lookAhead++;
     }
     
-    // Skip type
-    lookAhead++;
+    // Skip type modifiers
+    while (lookAhead < tokens.size() && 
+           (tokens[lookAhead].type == TokenType::SIGNED ||
+            tokens[lookAhead].type == TokenType::UNSIGNED ||
+            tokens[lookAhead].type == TokenType::SHORT ||
+            tokens[lookAhead].type == TokenType::LONG ||
+            tokens[lookAhead].type == TokenType::CONST)) {
+        lookAhead++;
+    }
+    
+    // Skip base type and qualified name
+    if (lookAhead < tokens.size() && 
+        (tokens[lookAhead].type == TokenType::IDENTIFIER ||
+         tokens[lookAhead].type == TokenType::INT ||
+         tokens[lookAhead].type == TokenType::FLOAT_KW ||
+         tokens[lookAhead].type == TokenType::DOUBLE ||
+         tokens[lookAhead].type == TokenType::CHAR ||
+         tokens[lookAhead].type == TokenType::BOOL ||
+         tokens[lookAhead].type == TokenType::VOID ||
+         tokens[lookAhead].type == TokenType::AUTO)) {
+        lookAhead++;
+        
+        // Handle qualified names (std::string)
+        while (lookAhead < tokens.size() && tokens[lookAhead].type == TokenType::COLON) {
+            lookAhead++; // Skip first colon
+            if (lookAhead < tokens.size() && tokens[lookAhead].type == TokenType::COLON) {
+                lookAhead++; // Skip second colon
+            }
+            if (lookAhead < tokens.size() && tokens[lookAhead].type == TokenType::IDENTIFIER) {
+                lookAhead++; // Skip identifier after ::
+            }
+        }
+        
+        // Handle template parameters
+        if (lookAhead < tokens.size() && tokens[lookAhead].type == TokenType::LESS_THAN) {
+            lookAhead++;
+            int depth = 1;
+            while (depth > 0 && lookAhead < tokens.size()) {
+                if (tokens[lookAhead].type == TokenType::LESS_THAN) depth++;
+                if (tokens[lookAhead].type == TokenType::GREATER_THAN) depth--;
+                lookAhead++;
+            }
+        }
+        
+        // Skip pointers/references
+        while (lookAhead < tokens.size() && 
+               (tokens[lookAhead].type == TokenType::MULTIPLY ||
+                tokens[lookAhead].type == TokenType::AMPERSAND)) {
+            lookAhead++;
+        }
+    }
     
     // Check if next is identifier followed by ( (function) or = or ; (variable)
     if (lookAhead < tokens.size() && tokens[lookAhead].type == TokenType::IDENTIFIER) {
@@ -168,6 +354,9 @@ std::shared_ptr<ASTNode> Parser::parseFunctionDecl() {
     func->column = currentToken().column;
     func->isSafe = false;
     func->isNullable = false;
+    
+    // Skip virtual keyword if present
+    if (match(TokenType::VIRTUAL)) {}
     
     // Parse return type
     func->type = currentToken().value;
@@ -203,18 +392,31 @@ std::shared_ptr<ASTNode> Parser::parseFunctionDecl() {
     }
     expect(TokenType::RIGHT_PAREN);
     
-    // Parse function body
-    expect(TokenType::LEFT_BRACE);
-    while (currentToken().type != TokenType::RIGHT_BRACE &&
-           currentToken().type != TokenType::END_OF_FILE) {
-        while (match(TokenType::NEWLINE)) {}
-        if (currentToken().type == TokenType::RIGHT_BRACE) break;
-        auto stmt = parseStatement();
-        if (stmt) {
-            func->body.push_back(stmt);
+    // Skip override and final modifiers
+    if (match(TokenType::OVERRIDE)) {}
+    if (match(TokenType::FINAL)) {}
+    
+    // Skip function body or : (for constructor initializer list)
+    if (match(TokenType::COLON)) {
+        // Constructor initializer list - skip it
+        while (currentToken().type != TokenType::LEFT_BRACE &&
+               currentToken().type != TokenType::END_OF_FILE) {
+            advance();
         }
     }
-    expect(TokenType::RIGHT_BRACE);
+    
+    // Parse function body if present
+    if (match(TokenType::LEFT_BRACE)) {
+        int braceDepth = 1;
+        while (braceDepth > 0 && currentToken().type != TokenType::END_OF_FILE) {
+            if (currentToken().type == TokenType::LEFT_BRACE) braceDepth++;
+            if (currentToken().type == TokenType::RIGHT_BRACE) braceDepth--;
+            advance();
+        }
+    } else {
+        // Function declaration only (no body)
+        match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    }
     
     return func;
 }
@@ -230,7 +432,16 @@ std::shared_ptr<ASTNode> Parser::parseVariableDecl() {
     // Parse nullable modifier
     varDecl->isNullable = match(TokenType::NULLABLE);
     
-    // Parse type
+    // Skip type modifiers
+    while (currentToken().type == TokenType::SIGNED ||
+           currentToken().type == TokenType::UNSIGNED ||
+           currentToken().type == TokenType::SHORT ||
+           currentToken().type == TokenType::LONG ||
+           currentToken().type == TokenType::CONST) {
+        advance();
+    }
+    
+    // Parse type (including qualified names like std::string)
     if (currentToken().type == TokenType::IDENTIFIER ||
         currentToken().type == TokenType::INT ||
         currentToken().type == TokenType::FLOAT_KW ||
@@ -238,39 +449,90 @@ std::shared_ptr<ASTNode> Parser::parseVariableDecl() {
         currentToken().type == TokenType::CHAR ||
         currentToken().type == TokenType::BOOL ||
         currentToken().type == TokenType::VOID ||
-        currentToken().type == TokenType::SHORT ||
-        currentToken().type == TokenType::LONG ||
-        currentToken().type == TokenType::SIGNED ||
-        currentToken().type == TokenType::UNSIGNED ||
+        currentToken().type == TokenType::AUTO ||
         currentToken().type == TokenType::WCHAR_T ||
         currentToken().type == TokenType::CHAR16_T ||
         currentToken().type == TokenType::CHAR32_T ||
         currentToken().type == TokenType::CHAR8_T) {
         varDecl->type = currentToken().value;
         advance();
+        
+        // Handle qualified names (std::string)
+        while (currentToken().type == TokenType::COLON) {
+            advance(); // Skip first colon
+            if (currentToken().type == TokenType::COLON) {
+                advance(); // Skip second colon
+            }
+            if (currentToken().type == TokenType::IDENTIFIER) {
+                varDecl->type += "::" + currentToken().value;
+                advance();
+            }
+        }
+        
+        // Handle template parameters (vector<int>)
+        if (currentToken().type == TokenType::LESS_THAN) {
+            varDecl->type += "<";
+            advance();
+            int depth = 1;
+            while (depth > 0 && currentToken().type != TokenType::END_OF_FILE) {
+                if (currentToken().type == TokenType::LESS_THAN) depth++;
+                if (currentToken().type == TokenType::GREATER_THAN) depth--;
+                varDecl->type += currentToken().value;
+                advance();
+            }
+        }
+        
+        // Handle pointers/references
+        while (currentToken().type == TokenType::MULTIPLY ||
+               currentToken().type == TokenType::AMPERSAND) {
+            varDecl->type += currentToken().value;
+            advance();
+        }
     } else {
-        error("Expected type in variable declaration");
+        // Skip this declaration if type is not recognized
+        while (!isStatementEnd() && currentToken().type != TokenType::END_OF_FILE) {
+            advance();
+        }
+        match(TokenType::SEMICOLON, TokenType::NEWLINE);
+        return varDecl;
     }
     
     // Parse variable name
-    if (currentToken().type != TokenType::IDENTIFIER) {
-        error("Expected variable name");
+    if (currentToken().type == TokenType::IDENTIFIER) {
+        varDecl->name = currentToken().value;
+        advance();
+    } else {
+        // Skip malformed declaration
+        while (!isStatementEnd() && currentToken().type != TokenType::END_OF_FILE) {
+            advance();
+        }
+        match(TokenType::SEMICOLON, TokenType::NEWLINE);
+        return varDecl;
     }
-    varDecl->name = currentToken().value;
-    advance();
     
     // Parse optional initializer
     if (match(TokenType::ASSIGN)) {
         varDecl->initializer = parseExpression();
+    } else if (match(TokenType::LEFT_BRACE)) {
+        // Handle brace initialization {}
+        int braceDepth = 1;
+        while (braceDepth > 0 && currentToken().type != TokenType::END_OF_FILE) {
+            if (currentToken().type == TokenType::LEFT_BRACE) braceDepth++;
+            if (currentToken().type == TokenType::RIGHT_BRACE) braceDepth--;
+            advance();
+        }
+    } else if (match(TokenType::LEFT_PAREN)) {
+        // Handle parentheses initialization ()
+        int parenDepth = 1;
+        while (parenDepth > 0 && currentToken().type != TokenType::END_OF_FILE) {
+            if (currentToken().type == TokenType::LEFT_PAREN) parenDepth++;
+            if (currentToken().type == TokenType::RIGHT_PAREN) parenDepth--;
+            advance();
+        }
     }
     
     // Semicolon-free support: accept newline or semicolon or nothing
-    if (!isStatementEnd()) {
-        // In Extended C++, we can allow missing semicolon
-        // Just continue
-    } else {
-        match(TokenType::SEMICOLON, TokenType::NEWLINE);
-    }
+    match(TokenType::SEMICOLON, TokenType::NEWLINE);
     
     return varDecl;
 }
@@ -300,20 +562,8 @@ std::shared_ptr<ASTNode> Parser::parseLetDecl() {
 }
 
 std::shared_ptr<ASTNode> Parser::parseIncludeStmt() {
-    expect(TokenType::INCLUDE);
-    
-    if (currentToken().type != TokenType::STRING) {
-        error("Expected string after #include");
-    }
-    
-    std::string includePath = currentToken().value;
-    advance();
-    
-    match(TokenType::SEMICOLON, TokenType::NEWLINE);
-    
-    auto stmt = std::make_shared<Statement>();
-    stmt->line = currentToken().line;
-    return stmt;
+    // Skip preprocessor - already handled by skipPreprocessor()
+    return std::make_shared<Statement>();
 }
 
 std::shared_ptr<ASTNode> Parser::parseStatement() {
@@ -498,9 +748,10 @@ std::shared_ptr<ASTNode> Parser::parseExpressionStatement() {
     if (!isStatementEnd() && currentToken().type != TokenType::RIGHT_BRACE) {
         // Allow missing semicolon in Extended C++
     }
+    
     match(TokenType::SEMICOLON, TokenType::NEWLINE);
     
-    return expr;
+    return std::make_shared<Statement>();
 }
 
 std::shared_ptr<ASTNode> Parser::parseExpression() {
@@ -510,10 +761,8 @@ std::shared_ptr<ASTNode> Parser::parseExpression() {
 std::shared_ptr<ASTNode> Parser::parseAssignment() {
     auto expr = parseLogicalOr();
     
-    if (currentToken().type == TokenType::ASSIGN) {
-        advance();
+    if (match(TokenType::ASSIGN)) {
         auto right = parseAssignment();
-        return right;
     }
     
     return expr;
@@ -522,9 +771,9 @@ std::shared_ptr<ASTNode> Parser::parseAssignment() {
 std::shared_ptr<ASTNode> Parser::parseLogicalOr() {
     auto expr = parseLogicalAnd();
     
-    while (currentToken().type == TokenType::LOGICAL_OR) {
+    while (match(TokenType::LOGICAL_OR)) {
         advance();
-        parseLogicalAnd();
+        auto right = parseLogicalAnd();
     }
     
     return expr;
@@ -533,9 +782,9 @@ std::shared_ptr<ASTNode> Parser::parseLogicalOr() {
 std::shared_ptr<ASTNode> Parser::parseLogicalAnd() {
     auto expr = parseEquality();
     
-    while (currentToken().type == TokenType::LOGICAL_AND) {
+    while (match(TokenType::LOGICAL_AND)) {
         advance();
-        parseEquality();
+        auto right = parseEquality();
     }
     
     return expr;
@@ -544,24 +793,38 @@ std::shared_ptr<ASTNode> Parser::parseLogicalAnd() {
 std::shared_ptr<ASTNode> Parser::parseEquality() {
     auto expr = parseComparison();
     
-    while (currentToken().type == TokenType::EQUAL || 
+    while (currentToken().type == TokenType::EQUAL ||
            currentToken().type == TokenType::NOT_EQUAL) {
         advance();
-        parseComparison();
+        auto right = parseComparison();
     }
     
     return expr;
 }
 
 std::shared_ptr<ASTNode> Parser::parseComparison() {
-    auto expr = parseTerm();
+    auto expr = parseShift();
     
     while (currentToken().type == TokenType::LESS_THAN ||
            currentToken().type == TokenType::GREATER_THAN ||
            currentToken().type == TokenType::LESS_EQUAL ||
            currentToken().type == TokenType::GREATER_EQUAL) {
         advance();
-        parseTerm();
+        auto right = parseShift();
+    }
+    
+    return expr;
+}
+
+std::shared_ptr<ASTNode> Parser::parseShift() {
+    auto expr = parseTerm();
+    
+    while (currentToken().type == TokenType::SHIFT_LEFT ||
+           currentToken().type == TokenType::SHIFT_RIGHT ||
+           currentToken().type == TokenType::STREAM_OUT ||
+           currentToken().type == TokenType::STREAM_IN) {
+        advance();
+        auto right = parseTerm();
     }
     
     return expr;
@@ -573,7 +836,7 @@ std::shared_ptr<ASTNode> Parser::parseTerm() {
     while (currentToken().type == TokenType::PLUS ||
            currentToken().type == TokenType::MINUS) {
         advance();
-        parseFactor();
+        auto right = parseFactor();
     }
     
     return expr;
@@ -586,7 +849,7 @@ std::shared_ptr<ASTNode> Parser::parseFactor() {
            currentToken().type == TokenType::DIVIDE ||
            currentToken().type == TokenType::MODULO) {
         advance();
-        parseUnary();
+        auto right = parseUnary();
     }
     
     return expr;
@@ -601,7 +864,6 @@ std::shared_ptr<ASTNode> Parser::parseUnary() {
         advance();
         return parseUnary();
     }
-    
     return parsePostfix();
 }
 
@@ -648,10 +910,10 @@ std::shared_ptr<ASTNode> Parser::parsePrimary() {
         return expr;
     }
     
-    error("Expected expression");
-    return nullptr;
+    return std::make_shared<Expression>();
 }
 
+// Missing method implementations
 const std::vector<std::string>& Parser::getErrors() const {
     return errors;
 }

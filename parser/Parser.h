@@ -130,6 +130,10 @@ private:
     // Grammar rules
     std::shared_ptr<Program> parseProgram();
     std::shared_ptr<ASTNode> parseDeclaration();
+    std::shared_ptr<ASTNode> skipPreprocessor();
+    std::shared_ptr<ASTNode> parseClassDecl();
+    std::shared_ptr<ASTNode> parseNamespaceDecl();
+    std::shared_ptr<ASTNode> parseFunctionOrVariable();
     std::shared_ptr<ASTNode> parseFunctionDecl();
     std::shared_ptr<ASTNode> parseVariableDecl();
     std::shared_ptr<ASTNode> parseLetDecl();
@@ -151,6 +155,7 @@ private:
     std::shared_ptr<ASTNode> parseLogicalAnd();
     std::shared_ptr<ASTNode> parseEquality();
     std::shared_ptr<ASTNode> parseComparison();
+    std::shared_ptr<ASTNode> parseShift();
     std::shared_ptr<ASTNode> parseTerm();
     std::shared_ptr<ASTNode> parseFactor();
     std::shared_ptr<ASTNode> parseUnary();
