@@ -423,11 +423,13 @@ std::string Token::getTokenPattern() const {
 }
 
 std::string Token::getDetailedFormat(int tokenNumber) const {
-    std::string result = "\nToken-" + std::to_string(tokenNumber) + " - \"" + value + "\"\n";
+    std::string result = "\nToken-" + std::to_string(tokenNumber) + " - \"" + value + "\" at Line " + 
+                         std::to_string(line) + ", Column " + std::to_string(column) + "\n";
     result += "<\n";
     result += "  Token: \"" + getTokenDescription() + "\"\n";
     result += "  Pattern: \"" + getTokenPattern() + "\"\n";
     result += "  Lexeme: \"" + value + "\"\n";
+    result += "  Location: Line " + std::to_string(line) + ", Column " + std::to_string(column) + "\n";
     result += ">";
     return result;
 }
