@@ -116,6 +116,13 @@ std::string Token::getTokenTypeString() const {
         case TokenType::LOGICAL_NOT: return "LOGICAL_NOT";
         case TokenType::AMPERSAND: return "AMPERSAND";
         case TokenType::ARROW: return "ARROW";
+        case TokenType::STREAM_OUT: return "STREAM_OUT";
+        case TokenType::STREAM_IN: return "STREAM_IN";
+        case TokenType::BITWISE_AND: return "BITWISE_AND";
+        case TokenType::BITWISE_OR: return "BITWISE_OR";
+        case TokenType::BITWISE_XOR: return "BITWISE_XOR";
+        case TokenType::SHIFT_LEFT: return "SHIFT_LEFT";
+        case TokenType::SHIFT_RIGHT: return "SHIFT_RIGHT";
 
         // Delimiters
         case TokenType::LEFT_PAREN: return "LEFT_PAREN";
@@ -259,6 +266,13 @@ std::string Token::getTokenDescription() const {
         case TokenType::LOGICAL_NOT: return "Logical NOT operator";
         case TokenType::AMPERSAND: return "Address-of operator";
         case TokenType::ARROW: return "Arrow operator";
+        case TokenType::STREAM_OUT: return "Stream output operator (<<)";
+        case TokenType::STREAM_IN: return "Stream input operator (>>)";
+        case TokenType::BITWISE_AND: return "Bitwise AND operator";
+        case TokenType::BITWISE_OR: return "Bitwise OR operator";
+        case TokenType::BITWISE_XOR: return "Bitwise XOR operator";
+        case TokenType::SHIFT_LEFT: return "Left shift operator";
+        case TokenType::SHIFT_RIGHT: return "Right shift operator";
 
         // Delimiters
         case TokenType::LEFT_PAREN: return "Left parenthesis";
@@ -395,6 +409,13 @@ std::string Token::getTokenPattern() const {
         case TokenType::LOGICAL_NOT: return "Logical operator: '!' -- unary operator for logical negation of boolean value";
         case TokenType::AMPERSAND: return "Unary operator: '&' -- address-of operator, retrieves memory address of variable";
         case TokenType::ARROW: return "Member access operator: '->' -- binary operator for accessing member through pointer (dereferencing + member access)";
+        case TokenType::STREAM_OUT: return "Stream output operator: '<<' -- binary operator for writing to output stream (cout << value)";
+        case TokenType::STREAM_IN: return "Stream input operator: '>>' -- binary operator for reading from input stream (cin >> value)";
+        case TokenType::BITWISE_AND: return "Bitwise operator: '&' -- binary operator for bitwise AND of two operands";
+        case TokenType::BITWISE_OR: return "Bitwise operator: '|' -- binary operator for bitwise OR of two operands";
+        case TokenType::BITWISE_XOR: return "Bitwise operator: '^' -- binary operator for bitwise XOR of two operands";
+        case TokenType::SHIFT_LEFT: return "Shift operator: '<<' -- binary operator for left bit shift operation";
+        case TokenType::SHIFT_RIGHT: return "Shift operator: '>>' -- binary operator for right bit shift operation";
 
         // Delimiters
         case TokenType::LEFT_PAREN: return "Delimiter: '(' -- left parenthesis for grouping expressions or function parameter lists";

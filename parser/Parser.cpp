@@ -596,7 +596,8 @@ std::shared_ptr<ASTNode> Parser::parseUnary() {
     if (currentToken().type == TokenType::LOGICAL_NOT ||
         currentToken().type == TokenType::MINUS ||
         currentToken().type == TokenType::MULTIPLY ||
-        currentToken().type == TokenType::AMPERSAND) {
+        currentToken().type == TokenType::AMPERSAND ||
+        currentToken().type == TokenType::SIZEOF) {
         advance();
         return parseUnary();
     }
@@ -627,7 +628,12 @@ std::shared_ptr<ASTNode> Parser::parsePrimary() {
     if (currentToken().type == TokenType::IDENTIFIER ||
         currentToken().type == TokenType::INTEGER ||
         currentToken().type == TokenType::FLOAT ||
-        currentToken().type == TokenType::STRING) {
+        currentToken().type == TokenType::STRING ||
+        currentToken().type == TokenType::TRUE_KW ||
+        currentToken().type == TokenType::FALSE_KW ||
+        currentToken().type == TokenType::COUT ||
+        currentToken().type == TokenType::CIN ||
+        currentToken().type == TokenType::THIS) {
         advance();
         return std::make_shared<Expression>();
     }

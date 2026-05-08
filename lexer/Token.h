@@ -114,6 +114,13 @@ enum class TokenType {
     LOGICAL_NOT,
     AMPERSAND,      // & for pointers
     ARROW,          // ->
+    STREAM_OUT,     // <<
+    STREAM_IN,      // >>
+    BITWISE_AND,    // bitwise AND
+    BITWISE_OR,     // bitwise OR
+    BITWISE_XOR,    // bitwise XOR
+    SHIFT_LEFT,     // << (alternative context)
+    SHIFT_RIGHT,    // >> (alternative context)
 
     // ========== DELIMITERS ==========
     LEFT_PAREN,

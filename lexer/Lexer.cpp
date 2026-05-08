@@ -249,9 +249,17 @@ Token Lexer::nextToken() {
         advance();
         return Token(TokenType::LESS_EQUAL, "<=", startLine, startColumn);
     }
+    if (ch == '<' && currentChar() == '<') {
+        advance();
+        return Token(TokenType::STREAM_OUT, "<<", startLine, startColumn);
+    }
     if (ch == '>' && currentChar() == '=') {
         advance();
         return Token(TokenType::GREATER_EQUAL, ">=", startLine, startColumn);
+    }
+    if (ch == '>' && currentChar() == '>') {
+        advance();
+        return Token(TokenType::STREAM_IN, ">>", startLine, startColumn);
     }
     if (ch == '&' && currentChar() == '&') {
         advance();
