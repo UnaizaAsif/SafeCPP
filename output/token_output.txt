@@ -1,0 +1,12 @@
+[Token Output Placeholder]
+
+This file will contain the output from the lexer token analysis.
+Format: Token Type | Token Value | Line | Column
+
+Example:
+INT | int | 1 | 1
+IDENTIFIER | main | 1 | 5
+LEFT_PAREN | ( | 1 | 9
+RIGHT_PAREN | ) | 1 | 10
+LEFT_BRACE | { | 1 | 12
+...
