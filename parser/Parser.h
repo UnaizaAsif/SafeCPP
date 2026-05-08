@@ -114,6 +114,8 @@ private:
     std::shared_ptr<ASTNode> parseIfStatement();
     std::shared_ptr<ASTNode> parseWhileStatement();
     std::shared_ptr<ASTNode> parseForStatement();
+    std::shared_ptr<ASTNode> parseSwitchStatement();
+    std::shared_ptr<ASTNode> parseGotoStatement();
     std::shared_ptr<ASTNode> parseReturnStatement();
     std::shared_ptr<ASTNode> parseExpressionStatement();
 

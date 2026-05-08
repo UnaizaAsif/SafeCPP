@@ -237,7 +237,15 @@ std::shared_ptr<ASTNode> Parser::parseVariableDecl() {
         currentToken().type == TokenType::DOUBLE ||
         currentToken().type == TokenType::CHAR ||
         currentToken().type == TokenType::BOOL ||
-        currentToken().type == TokenType::VOID) {
+        currentToken().type == TokenType::VOID ||
+        currentToken().type == TokenType::SHORT ||
+        currentToken().type == TokenType::LONG ||
+        currentToken().type == TokenType::SIGNED ||
+        currentToken().type == TokenType::UNSIGNED ||
+        currentToken().type == TokenType::WCHAR_T ||
+        currentToken().type == TokenType::CHAR16_T ||
+        currentToken().type == TokenType::CHAR32_T ||
+        currentToken().type == TokenType::CHAR8_T) {
         varDecl->type = currentToken().value;
         advance();
     } else {
@@ -321,8 +329,20 @@ std::shared_ptr<ASTNode> Parser::parseStatement() {
             return parseWhileStatement();
         case TokenType::FOR:
             return parseForStatement();
+        case TokenType::SWITCH:
+            return parseSwitchStatement();
         case TokenType::RETURN:
             return parseReturnStatement();
+        case TokenType::GOTO:
+            return parseGotoStatement();
+        case TokenType::BREAK:
+            advance();
+            match(TokenType::SEMICOLON, TokenType::NEWLINE);
+            return std::make_shared<Statement>();
+        case TokenType::CONTINUE:
+            advance();
+            match(TokenType::SEMICOLON, TokenType::NEWLINE);
+            return std::make_shared<Statement>();
         default:
             return parseExpressionStatement();
     }
@@ -401,6 +421,75 @@ std::shared_ptr<ASTNode> Parser::parseReturnStatement() {
     match(TokenType::SEMICOLON, TokenType::NEWLINE);
     
     return std::make_shared<Statement>();
+}
+
+std::shared_ptr<ASTNode> Parser::parseSwitchStatement() {
+    expect(TokenType::SWITCH);
+    expect(TokenType::LEFT_PAREN);
+    auto expr = parseExpression();
+    expect(TokenType::RIGHT_PAREN);
+    expect(TokenType::LEFT_BRACE);
+    
+    auto switchStmt = std::make_shared<Statement>();
+    switchStmt->line = currentToken().line;
+    
+    while (currentToken().type != TokenType::RIGHT_BRACE &&
+           currentToken().type != TokenType::END_OF_FILE) {
+        while (match(TokenType::NEWLINE)) {}
+        
+        if (currentToken().type == TokenType::CASE) {
+            expect(TokenType::CASE);
+            auto caseExpr = parseExpression();
+            expect(TokenType::COLON);
+            
+            while (currentToken().type != TokenType::CASE &&
+                   currentToken().type != TokenType::DEFAULT &&
+                   currentToken().type != TokenType::RIGHT_BRACE &&
+                   currentToken().type != TokenType::END_OF_FILE) {
+                while (match(TokenType::NEWLINE)) {}
+                if (currentToken().type == TokenType::CASE ||
+                    currentToken().type == TokenType::DEFAULT ||
+                    currentToken().type == TokenType::RIGHT_BRACE) break;
+                parseStatement();
+            }
+        } else if (currentToken().type == TokenType::DEFAULT) {
+            expect(TokenType::DEFAULT);
+            expect(TokenType::COLON);
+            
+            while (currentToken().type != TokenType::CASE &&
+                   currentToken().type != TokenType::DEFAULT &&
+                   currentToken().type != TokenType::RIGHT_BRACE &&
+                   currentToken().type != TokenType::END_OF_FILE) {
+                while (match(TokenType::NEWLINE)) {}
+                if (currentToken().type == TokenType::CASE ||
+                    currentToken().type == TokenType::DEFAULT ||
+                    currentToken().type == TokenType::RIGHT_BRACE) break;
+                parseStatement();
+            }
+        } else {
+            break;
+        }
+    }
+    
+    expect(TokenType::RIGHT_BRACE);
+    return switchStmt;
+}
+
+std::shared_ptr<ASTNode> Parser::parseGotoStatement() {
+    expect(TokenType::GOTO);
+    
+    if (currentToken().type != TokenType::IDENTIFIER) {
+        error("Expected label after 'goto'");
+    }
+    
+    std::string label = currentToken().value;
+    advance();
+    
+    match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    
+    auto gotoStmt = std::make_shared<Statement>();
+    gotoStmt->line = currentToken().line;
+    return gotoStmt;
 }
 
 std::shared_ptr<ASTNode> Parser::parseExpressionStatement() {
