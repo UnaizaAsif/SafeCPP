@@ -10,6 +10,8 @@ enum class ErrorKind {
     NULL_DEREF,             // System 2 – null pointer dereference
     MAYBE_NULL_DEREF,       // System 2 – possible null dereference
     UNKNOWN_SYMBOL,         // used but never declared
+    MEMORY_LEAK,            // System 3 – memory not freed
+    LOOP_MEMORY_LEAK,       // System 3 – memory allocated in loop without delete
 };
 
 struct SemanticError {
@@ -55,6 +57,24 @@ struct SemanticError {
                           << "  Symbol '" << variable << "' was never declared.\n"
                           << "  Risk: Using undefined symbols leads to undefined behavior.\n"
                           << "  Impact: Compiler or runtime error. Code is unsafe.\n"
+                          << "  Location: Line " << line << ", Column " << column << "\n"
+                          << "  Suggestion: " << suggestion << "\n";
+                break;
+            case ErrorKind::MEMORY_LEAK:
+                std::cout << "SYSTEM 3: MEMORY LEAK DETECTION\n"
+                          << "✔ MEMORY_LEAK_WARNING:\n"
+                          << "  Variable '" << variable << "' allocated but not freed.\n"
+                          << "  Risk: Memory allocated with 'new' is never released.\n"
+                          << "  Impact: Memory accumulates, eventually exhausting system resources.\n"
+                          << "  Location: Line " << line << ", Column " << column << "\n"
+                          << "  Suggestion: " << suggestion << "\n";
+                break;
+            case ErrorKind::LOOP_MEMORY_LEAK:
+                std::cout << "SYSTEM 3: MEMORY LEAK DETECTION\n"
+                          << "✔ LOOP_LEAK_WARNING:\n"
+                          << "  Memory allocated inside loop without deletion in same scope.\n"
+                          << "  Risk: Memory allocated in loop without corresponding 'delete'.\n"
+                          << "  Impact: Each iteration leaks memory, quickly exhausting resources.\n"
                           << "  Location: Line " << line << ", Column " << column << "\n"
                           << "  Suggestion: " << suggestion << "\n";
                 break;

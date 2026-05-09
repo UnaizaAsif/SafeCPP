@@ -111,6 +111,63 @@ bool SymbolTable::checkNullDereference(const std::string& name) {
 }
 
 // -------------------------------------------------------
+//  Memory leak tracking (System 3)
+// -------------------------------------------------------
+bool SymbolTable::markAllocated(const std::string& name, int line, bool inLoop, int loopDepth) {
+    SymbolEntry* e = lookup(name);
+    if (!e) return false;
+    e->allocated   = true;
+    e->allocLine   = line;
+    e->allocInLoop = inLoop;
+    e->loopDepth   = loopDepth;
+    // Mark as initialized for System 1
+    e->initState   = InitState::INITIALIZED;
+    e->assignLine  = line;
+    return true;
+}
+
+bool SymbolTable::markFreed(const std::string& name, int line) {
+    SymbolEntry* e = lookup(name);
+    if (!e) return false;
+    e->freed       = true;
+    e->freeLine    = line;
+    return true;
+}
+
+std::vector<SymbolTable::MemoryLeak> SymbolTable::getMemoryLeaks() const {
+    std::vector<MemoryLeak> leaks;
+
+    // Check all scopes
+    for (const auto& scope : scopes) {
+        for (const auto& entry : scope) {
+            const SymbolEntry& e = entry.second;
+
+            // Only check variables that were allocated
+            if (!e.allocated) continue;
+
+            // If freed, no leak
+            if (e.freed) continue;
+
+            // Memory leak found
+            MemoryLeak leak;
+            leak.varName = e.name;
+            leak.allocLine = e.allocLine;
+            
+            // Determine leak type
+            if (e.allocInLoop) {
+                leak.errorType = 1; // LOOP_LEAK_WARNING
+            } else {
+                leak.errorType = 0; // MEMORY_LEAK_WARNING
+            }
+
+            leaks.push_back(leak);
+        }
+    }
+
+    return leaks;
+}
+
+// -------------------------------------------------------
 //  Debug dump
 // -------------------------------------------------------
 void SymbolTable::dump() const {

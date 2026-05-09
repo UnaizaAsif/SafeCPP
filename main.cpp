@@ -9,7 +9,8 @@
  *     └─▶ Parser         (AST construction)
  *     └─▶ SemanticAnalyzer
  *           ├─ System 1: Undefined Behavior Detection
- *           └─ System 2: Null Pointer Safety
+ *           ├─ System 2: Null Pointer Safety
+ *           └─ System 3: Memory Leak Detection
  *
  * Usage:
  *   ./compiler <source_file>          -- analyze a file
@@ -34,6 +35,7 @@ static void printBanner() {
               << "  Extended C++ Safety Compiler v1.0\n"
               << "  System 1: Undefined Behavior Detection\n"
               << "  System 2: Null Pointer Safety\n"
+              << "  System 3: Memory Leak Detection\n"
               << "========================================\n\n";
 }
 
@@ -140,6 +142,39 @@ int* data = nullptr;
 int result = count * 2;
 *data = result;
 )", "Combined — CRITICAL: System 1 + System 2 errors together");
+
+    // --- System 3 Demo 1: Memory leak without delete (ERROR) ---
+    runPipeline(R"(
+int* p = new int;
+int* q = new int;
+delete p;
+)", "System 3 — ERROR: Memory leak - variable 'q' not freed");
+
+    // --- System 3 Demo 2: Memory properly freed (SAFE) ---
+    runPipeline(R"(
+int* p = new int;
+int* q = new int;
+delete p;
+delete q;
+)", "System 3 — SAFE: All allocated memory properly freed");
+
+    // --- System 3 Demo 3: Multiple memory leaks (ERROR) ---
+    runPipeline(R"(
+int* a = new int;
+int* b = new int;
+int* c = new int;
+delete a;
+)", "System 3 — ERROR: Multiple memory leaks - variables 'b' and 'c' not freed");
+
+    // --- System 3 Demo 4: All memory properly freed (SAFE) ---
+    runPipeline(R"(
+int* a = new int;
+int* b = new int;
+int* c = new int;
+delete a;
+delete b;
+delete c;
+)", "System 3 — SAFE: All memory properly freed");
 
     std::cout << "\n========================================\n"
               << "  Demo complete.\n"

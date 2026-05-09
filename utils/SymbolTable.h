@@ -43,6 +43,14 @@ struct SymbolEntry {
     bool        isPointer   = false;
     NullState   nullState   = NullState::NOT_A_POINTER;
     int         nullAssignLine = -1;
+
+    // System 3 – Memory leak detection
+    bool        allocated   = false;    // was 'new' applied?
+    bool        freed       = false;    // was 'delete' applied?
+    int         allocLine   = -1;       // line where 'new' occurred
+    int         freeLine    = -1;       // line where 'delete' occurred
+    bool        allocInLoop = false;    // allocated inside a loop?
+    int         loopDepth   = 0;        // nesting depth at allocation
 };
 
 // ============================================================
@@ -86,6 +94,22 @@ public:
     // Is this a pointer and in a null / unknown state?
     // Returns true → dereference is unsafe.
     bool checkNullDereference(const std::string& name);
+
+    // ---- System 3 – Memory leak detection ----
+    // Mark a variable as allocated via 'new'
+    bool markAllocated(const std::string& name, int line, bool inLoop, int loopDepth);
+
+    // Mark a variable as freed via 'delete'
+    bool markFreed(const std::string& name, int line);
+
+    // Check for memory leaks at end of analysis
+    // Returns list of (varName, allocLine, errorType) tuples
+    struct MemoryLeak {
+        std::string varName;
+        int         allocLine;
+        int         errorType; // 0 = MEMORY_LEAK, 1 = LOOP_LEAK
+    };
+    std::vector<MemoryLeak> getMemoryLeaks() const;
 
     // Dump all symbols (for debug output)
     void dump() const;

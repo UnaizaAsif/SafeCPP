@@ -43,6 +43,13 @@ private:
     SymbolTable               symTable;
     size_t                    pos;
 
+    // ---- System 3: Scope depth tracking ----
+    int scopeDepth = 0;  // depth of scope nesting (0 = global, >1 = in loop/block)
+
+    // ---- Loop-aware tracking (disabled - architectural limitations) ----
+    // bool insideLoop = false;  
+    // int loopDepth = 0;
+
     // ---- token navigation ----
     const Token& cur()  const;
     const Token& peek(int offset = 1) const;
@@ -61,10 +68,15 @@ private:
     void processAssignment(const std::string& name, int line, int col);
     void processUse(const std::string& name, int line, int col);
     void processDereference();   // handles * <id>
+    void processNew();           // handles new keyword (System 3)
+    void processDelete();        // handles delete keyword (System 3)
     void skipToStatementEnd();
 
     // Collect the full type string (e.g. "int*", "double*")
     std::string collectType();
+
+    // Report memory leaks at end of analysis (System 3)
+    void reportMemoryLeaks();
 };
 
 #endif // SEMANTIC_ANALYZER_H

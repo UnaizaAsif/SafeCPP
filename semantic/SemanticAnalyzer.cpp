@@ -128,6 +128,90 @@ void SemanticAnalyzer::skipToStatementEnd() {
 }
 
 // ----------------------------------------------------------------
+//  Process 'new' keyword (System 3)
+// ----------------------------------------------------------------
+void SemanticAnalyzer::processNew() {
+    // cur() is NEW
+    advance();  // consume NEW
+
+    // Skip the type being allocated (e.g., "int", "char*", etc.)
+    if (isTypeKeyword(cur().type) || at(TokenType::IDENTIFIER)) {
+        advance();
+    }
+
+    // Skip any array brackets: new int[10]
+    if (at(TokenType::LEFT_BRACKET)) {
+        int depth = 1;
+        advance();
+        while (depth > 0 && !atEnd()) {
+            if (at(TokenType::LEFT_BRACKET))   depth++;
+            if (at(TokenType::RIGHT_BRACKET)) depth--;
+            advance();
+        }
+    }
+
+    // Skip any parentheses for constructor: new Type(args)
+    if (at(TokenType::LEFT_PAREN)) {
+        int depth = 1;
+        advance();
+        while (depth > 0 && !atEnd()) {
+            if (at(TokenType::LEFT_PAREN))   depth++;
+            if (at(TokenType::RIGHT_PAREN)) depth--;
+            advance();
+        }
+    }
+}
+
+// ----------------------------------------------------------------
+//  Process 'delete' keyword (System 3)
+// ----------------------------------------------------------------
+void SemanticAnalyzer::processDelete() {
+    // cur() is DELETE
+    int deleteLine = cur().line;
+    advance();
+
+    // Next should be the pointer name or *name
+    if (at(TokenType::MULTIPLY)) {
+        advance();
+    }
+
+    if (at(TokenType::IDENTIFIER)) {
+        std::string varName = cur().value;
+        symTable.markFreed(varName, deleteLine);
+        advance();
+    }
+
+    // Skip to end of statement
+    skipToStatementEnd();
+}
+
+// ----------------------------------------------------------------
+//  Report all memory leaks at end of analysis (System 3)
+// ----------------------------------------------------------------
+void SemanticAnalyzer::reportMemoryLeaks() {
+    std::vector<SymbolTable::MemoryLeak> leaks = symTable.getMemoryLeaks();
+
+    for (const auto& leak : leaks) {
+        SemanticError err;
+        err.line = leak.allocLine;
+        err.column = 0;  // we don't have exact column info
+        err.variable = leak.varName;
+
+        if (leak.errorType == 0) {
+            // Regular memory leak
+            err.kind = ErrorKind::MEMORY_LEAK;
+            err.suggestion = "Add 'delete " + leak.varName + ";' to free this memory.";
+        } else {
+            // Loop memory leak
+            err.kind = ErrorKind::LOOP_MEMORY_LEAK;
+            err.suggestion = "Add 'delete " + leak.varName + ";' inside the loop to prevent accumulation.";
+        }
+
+        reporter.report(err);
+    }
+}
+
+// ----------------------------------------------------------------
 //  Process an assignment (already past the '=')
 // ----------------------------------------------------------------
 void SemanticAnalyzer::processAssignment(const std::string& name,
@@ -136,6 +220,26 @@ void SemanticAnalyzer::processAssignment(const std::string& name,
     if (isNullLiteral(cur().type) ||
         (at(TokenType::INTEGER) && cur().value == "0")) {
         symTable.markNull(name, line);
+    } else if (at(TokenType::NEW)) {
+        // System 3: Track memory allocation
+        // Note: Loop-aware tracking disabled due to token stream issues
+        symTable.markAllocated(name, cur().line, false, 0);
+        advance(); // consume NEW
+        // Skip type
+        if (isTypeKeyword(cur().type) || at(TokenType::IDENTIFIER)) {
+            advance();
+        }
+        // Skip array brackets
+        if (at(TokenType::LEFT_BRACE)) {
+            int depth = 1;
+            advance();
+            while (depth > 0 && !atEnd()) {
+                if (at(TokenType::LEFT_BRACE))  depth++;
+                if (at(TokenType::RIGHT_BRACE)) depth--;
+                advance();
+            }
+        }
+        return;  // don't process further
     } else {
         symTable.markNonNull(name, line);
     }
@@ -292,12 +396,17 @@ bool SemanticAnalyzer::analyze() {
         // Scope management
         if (at(TokenType::LEFT_BRACE)) {
             symTable.pushScope();
+            scopeDepth++;
             advance(); continue;
         }
         if (at(TokenType::RIGHT_BRACE)) {
             symTable.popScope();
+            if (scopeDepth > 0) scopeDepth--;
             advance(); continue;
         }
+
+        // ---- Loop detection disabled - just track brace depth for now ----
+        // We'll count braces to detect loop context later
 
         // ---- Dereference: unary *  ----
         // Distinguish from multiply: unary * follows operator, (, or start
@@ -384,8 +493,23 @@ bool SemanticAnalyzer::analyze() {
             continue;
         }
 
+        // ---- NEW keyword (System 3) ----
+        if (at(TokenType::NEW)) {
+            processNew();
+            continue;
+        }
+
+        // ---- DELETE keyword (System 3) ----
+        if (at(TokenType::DELETE)) {
+            processDelete();
+            continue;
+        }
+
         advance(); // consume anything else
     }
+
+    // ---- System 3: Report all memory leaks at end of analysis ----
+    reportMemoryLeaks();
 
     return !reporter.hasErrors();
 }
