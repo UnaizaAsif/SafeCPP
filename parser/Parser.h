@@ -62,6 +62,7 @@ private:
     void expect(TokenType type);
     bool match(TokenType type);
     bool match(TokenType type1, TokenType type2);
+    bool matchStatementEnd();  // System 6: Match SEMICOLON, NEWLINE, or STMT_END
     void error(const std::string& message);
     void synchronize();
 

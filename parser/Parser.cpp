@@ -35,6 +35,16 @@ bool Parser::match(TokenType type) {
 bool Parser::match(TokenType t1, TokenType t2) {
     if (currentToken().type == t1 || currentToken().type == t2) { advance(); return true; } return false;
 }
+bool Parser::matchStatementEnd() {
+    // System 6: Match any statement-ending token (semicolon, newline, or virtual STMT_END)
+    if (currentToken().type == TokenType::SEMICOLON || 
+        currentToken().type == TokenType::NEWLINE ||
+        currentToken().type == TokenType::STMT_END) { 
+        advance(); 
+        return true; 
+    } 
+    return false;
+}
 void Parser::error(const std::string& message) {
     std::string msg = "Parse error at line " + std::to_string(currentToken().line) +
                       ", column " + std::to_string(currentToken().column) + ": " + message;
@@ -44,7 +54,11 @@ void Parser::error(const std::string& message) {
 void Parser::synchronize() {
     advance();
     while (currentToken().type != TokenType::END_OF_FILE) {
-        if (currentToken().type == TokenType::SEMICOLON) { advance(); return; }
+        if (currentToken().type == TokenType::SEMICOLON || 
+            currentToken().type == TokenType::STMT_END) { 
+            advance(); 
+            return; 
+        }
         switch (currentToken().type) {
             case TokenType::IF: case TokenType::WHILE:
             case TokenType::FOR: case TokenType::RETURN: return;
@@ -55,6 +69,7 @@ void Parser::synchronize() {
 }
 bool Parser::isStatementEnd() {
     return currentToken().type == TokenType::SEMICOLON ||
+           currentToken().type == TokenType::STMT_END   ||
            currentToken().type == TokenType::NEWLINE   ||
            currentToken().type == TokenType::RIGHT_BRACE||
            currentToken().type == TokenType::END_OF_FILE;

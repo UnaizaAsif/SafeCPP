@@ -3,6 +3,7 @@
 
 #include "../lexer/Token.h"
 #include "../utils/SymbolTable.h"
+#include "../analyzer/IncludeDependencyAnalyzer.h"
 #include "SemanticError.h"
 #include <vector>
 
@@ -32,9 +33,10 @@
 class SemanticAnalyzer {
 public:
     SemanticAnalyzer(const std::vector<Token>& tokens,
-                     ErrorReporter&            reporter);
+                     ErrorReporter&            reporter,
+                     const std::string&       filename = "input.cpp");
 
-    // Run both safety systems. Returns true if no errors were found.
+    // Run all safety systems (1-4). Returns true if no errors were found.
     bool analyze();
 
 private:
@@ -45,6 +47,10 @@ private:
 
     // ---- System 3: Scope depth tracking ----
     int scopeDepth = 0;  // depth of scope nesting (0 = global, >1 = in loop/block)
+
+    // ---- System 4: Include dependency cycle detection ----
+    IncludeDependencyAnalyzer dependencyAnalyzer;
+    std::string currentFileName;  // track which file is being analyzed
 
     // ---- Loop-aware tracking (disabled - architectural limitations) ----
     // bool insideLoop = false;  
@@ -77,6 +83,11 @@ private:
 
     // Report memory leaks at end of analysis (System 3)
     void reportMemoryLeaks();
+
+    // Extract include directives and check for cycles (System 4)
+    void analyzeIncludeDependencies();
+    void extractIncludeDirectives();
+    void reportIncludeCycles();
 };
 
 #endif // SEMANTIC_ANALYZER_H

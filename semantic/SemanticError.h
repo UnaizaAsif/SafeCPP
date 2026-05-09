@@ -12,6 +12,7 @@ enum class ErrorKind {
     UNKNOWN_SYMBOL,         // used but never declared
     MEMORY_LEAK,            // System 3 – memory not freed
     LOOP_MEMORY_LEAK,       // System 3 – memory allocated in loop without delete
+    INCLUDE_CYCLE,          // System 4 – circular include dependency
 };
 
 struct SemanticError {
@@ -77,6 +78,15 @@ struct SemanticError {
                           << "  Impact: Each iteration leaks memory, quickly exhausting resources.\n"
                           << "  Location: Line " << line << ", Column " << column << "\n"
                           << "  Suggestion: " << suggestion << "\n";
+                break;
+            case ErrorKind::INCLUDE_CYCLE:
+                std::cout << "SYSTEM 4: INCLUDE DEPENDENCY ANALYSIS\n"
+                          << "✕ INCLUDE_CYCLE_DETECTED:\n"
+                          << "  Circular include dependency found.\n"
+                          << "  Risk: Headers including each other create circular dependencies.\n"
+                          << "  Impact: Compilation may fail, or cause infinite include loops.\n"
+                          << "  Cycle Path: " << suggestion << "\n"
+                          << "  Location: Line " << line << "\n";
                 break;
         }
     }

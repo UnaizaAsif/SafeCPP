@@ -21,6 +21,10 @@ private:
     Token readNumber();
     Token readString();
     Token readIdentifier();
+    
+    // System 6: Statement end detection
+    bool isStatementBoundary(const Token& token);
+    bool canEndStatement(const Token& token);
 
 public:
     Lexer(const std::string& source);

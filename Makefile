@@ -6,7 +6,8 @@ SRCS := main.cpp \
         lexer/Lexer.cpp \
         parser/Parser.cpp \
         utils/SymbolTable.cpp \
-        semantic/SemanticAnalyzer.cpp
+        semantic/SemanticAnalyzer.cpp \
+        analyzer/IncludeDependencyAnalyzer.cpp
 
 OBJS := $(SRCS:.cpp=.o)
 TARGET := compiler

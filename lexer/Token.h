@@ -134,6 +134,7 @@ enum class TokenType {
     DOT,
     COLON,
     NEWLINE,
+    STMT_END,  // Virtual statement end (inserted for optional semicolons)
 
     // ========== PREPROCESSOR ==========
     INCLUDE,

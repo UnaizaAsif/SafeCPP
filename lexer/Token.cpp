@@ -107,6 +107,7 @@ std::string Token::getTokenTypeString() const {
         case TokenType::DOT:           return "DOT";
         case TokenType::COLON:         return "COLON";
         case TokenType::NEWLINE:       return "NEWLINE";
+        case TokenType::STMT_END:      return "STMT_END";
         case TokenType::INCLUDE:       return "INCLUDE";
         case TokenType::DEFINE:        return "DEFINE";
         case TokenType::IFNDEF:        return "IFNDEF";

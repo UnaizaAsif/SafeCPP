@@ -168,5 +168,98 @@ std::vector<Token> Lexer::tokenize() {
         token = nextToken();
     }
     tokens.push_back(token);
-    return tokens;
+    
+    // ===== SYSTEM 6: Insert STMT_END tokens for semicolon-free syntax =====
+    std::vector<Token> processedTokens;
+    
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        Token& current = tokens[i];
+        processedTokens.push_back(current);
+        
+        // Check if we need to insert STMT_END
+        if (current.type != TokenType::NEWLINE && 
+            current.type != TokenType::SEMICOLON && 
+            current.type != TokenType::END_OF_FILE &&
+            current.type != TokenType::STMT_END) {
+            
+            // Look ahead to next non-newline token
+            Token* nextNonNewline = nullptr;
+            int nextIdx = i + 1;
+            while (nextIdx < tokens.size() && tokens[nextIdx].type == TokenType::NEWLINE) {
+                nextIdx++;
+            }
+            
+            if (nextIdx < tokens.size()) {
+                nextNonNewline = &tokens[nextIdx];
+            }
+            
+            // Rule 1: If followed by newline + start of new statement → insert STMT_END
+            if (nextIdx < tokens.size() && 
+                i + 1 < tokens.size() && 
+                tokens[i + 1].type == TokenType::NEWLINE &&
+                canEndStatement(current) &&
+                isStatementBoundary(*nextNonNewline)) {
+                
+                // Skip the NEWLINE tokens
+                while (i + 1 < tokens.size() && tokens[i + 1].type == TokenType::NEWLINE) {
+                    processedTokens.push_back(tokens[++i]);
+                }
+                // Insert virtual STMT_END
+                processedTokens.push_back(Token(TokenType::STMT_END, "", current.line, current.column));
+            }
+            // Rule 2: RIGHT_PAREN or RIGHT_BRACE followed by newline → insert STMT_END
+            else if ((current.type == TokenType::RIGHT_PAREN || current.type == TokenType::RIGHT_BRACE) &&
+                     i + 1 < tokens.size() && 
+                     tokens[i + 1].type == TokenType::NEWLINE &&
+                     nextIdx < tokens.size() &&
+                     isStatementBoundary(*nextNonNewline)) {
+                
+                while (i + 1 < tokens.size() && tokens[i + 1].type == TokenType::NEWLINE) {
+                    processedTokens.push_back(tokens[++i]);
+                }
+                processedTokens.push_back(Token(TokenType::STMT_END, "", current.line, current.column));
+            }
+        }
+    }
+    
+    return processedTokens;
+}
+
+bool Lexer::canEndStatement(const Token& token) {
+    // Tokens that can end a statement
+    return token.type == TokenType::IDENTIFIER ||
+           token.type == TokenType::INTEGER ||
+           token.type == TokenType::FLOAT ||
+           token.type == TokenType::STRING ||
+           token.type == TokenType::RIGHT_PAREN ||
+           token.type == TokenType::RIGHT_BRACE ||
+           token.type == TokenType::RIGHT_BRACKET ||
+           token.type == TokenType::RETURN ||
+           token.type == TokenType::BREAK ||
+           token.type == TokenType::CONTINUE ||
+           token.type == TokenType::DELETE;
+}
+
+bool Lexer::isStatementBoundary(const Token& token) {
+    // Keywords that typically start new statements
+    return token.type == TokenType::INT ||
+           token.type == TokenType::FLOAT_KW ||
+           token.type == TokenType::DOUBLE ||
+           token.type == TokenType::CHAR ||
+           token.type == TokenType::BOOL ||
+           token.type == TokenType::VOID ||
+           token.type == TokenType::IF ||
+           token.type == TokenType::ELSE ||
+           token.type == TokenType::WHILE ||
+           token.type == TokenType::FOR ||
+           token.type == TokenType::RETURN ||
+           token.type == TokenType::BREAK ||
+           token.type == TokenType::CONTINUE ||
+           token.type == TokenType::LET ||
+           token.type == TokenType::CONST ||
+           token.type == TokenType::STATIC ||
+           token.type == TokenType::CLASS ||
+           token.type == TokenType::STRUCT ||
+           token.type == TokenType::RIGHT_BRACE ||
+           token.type == TokenType::END_OF_FILE;
 }

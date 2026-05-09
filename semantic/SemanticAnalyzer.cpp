@@ -6,8 +6,9 @@
 //  Construction
 // ----------------------------------------------------------------
 SemanticAnalyzer::SemanticAnalyzer(const std::vector<Token>& tokens,
-                                   ErrorReporter&            reporter)
-    : tokens(tokens), reporter(reporter), pos(0) {
+                                   ErrorReporter&            reporter,
+                                   const std::string&       filename)
+    : tokens(tokens), reporter(reporter), pos(0), currentFileName(filename) {
     symTable.pushScope(); // global scope
 }
 
@@ -211,6 +212,75 @@ void SemanticAnalyzer::reportMemoryLeaks() {
     }
 }
 
+// ================================================================
+//  System 4: Include Dependency Analysis
+// ================================================================
+void SemanticAnalyzer::analyzeIncludeDependencies() {
+    // Extract all #include directives from the token stream
+    extractIncludeDirectives();
+    
+    // Check for cycles
+    reportIncludeCycles();
+}
+
+// ================================================================
+//  Extract Include Directives
+// ================================================================
+void SemanticAnalyzer::extractIncludeDirectives() {
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        const Token& tok = tokens[i];
+        
+        // Look for #include pattern
+        if (tok.type == TokenType::INCLUDE && i + 1 < tokens.size()) {
+            const Token& nextTok = tokens[i + 1];
+            
+            // Handle #include "filename.h"
+            if (nextTok.type == TokenType::STRING) {
+                std::string includedFile = nextTok.value;
+                
+                // Strip quotes if present
+                if (includedFile.length() >= 2 && 
+                    includedFile.front() == '"' && 
+                    includedFile.back() == '"') {
+                    includedFile = includedFile.substr(1, includedFile.length() - 2);
+                }
+                
+                // Add dependency: current file includes this file
+                if (!currentFileName.empty()) {
+                    dependencyAnalyzer.addDependency(currentFileName, includedFile);
+                }
+            }
+        }
+    }
+}
+
+// ================================================================
+//  Report Include Cycles
+// ================================================================
+void SemanticAnalyzer::reportIncludeCycles() {
+    IncludeCycle cycle = dependencyAnalyzer.detectCycles();
+    
+    if (cycle.cycleFound && !cycle.cyclePath.empty()) {
+        // Format cycle path
+        std::string cyclePath;
+        for (size_t i = 0; i < cycle.cyclePath.size(); ++i) {
+            cyclePath += cycle.cyclePath[i];
+            if (i < cycle.cyclePath.size() - 1) {
+                cyclePath += " → ";
+            }
+        }
+        
+        SemanticError err;
+        err.kind = ErrorKind::INCLUDE_CYCLE;
+        err.line = 1;  // Report at line 1 since it's a global issue
+        err.column = 0;
+        err.variable = cyclePath;
+        err.suggestion = cyclePath;
+        
+        reporter.report(err);
+    }
+}
+
 // ----------------------------------------------------------------
 //  Process an assignment (already past the '=')
 // ----------------------------------------------------------------
@@ -379,6 +449,9 @@ void SemanticAnalyzer::processDeclaration() {
 //  Main analysis loop
 // ----------------------------------------------------------------
 bool SemanticAnalyzer::analyze() {
+    // ---- System 4: Analyze include dependencies ----
+    analyzeIncludeDependencies();
+    
     while (!atEnd()) {
         // Skip preprocessor lines, newlines, access modifiers
         if (at(TokenType::NEWLINE)   ||
