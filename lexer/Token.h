@@ -80,10 +80,10 @@ enum class TokenType {
     FUNCTION,
 
     // ========== SAFETY KEYWORDS (Extended C++) ==========
-    SAFE,           // @safe declaration
-    LET,            // Type inference: let x = 5
-    NULLABLE,       // nullable pointer
-    NONNULL,        // guaranteed non-null
+    SAFE,
+    LET,
+    NULLABLE,
+    NONNULL,
 
     // ========== MEMORY/TYPE KEYWORDS ==========
     NEW,
@@ -112,15 +112,15 @@ enum class TokenType {
     LOGICAL_AND,
     LOGICAL_OR,
     LOGICAL_NOT,
-    AMPERSAND,      // & for pointers
-    ARROW,          // ->
-    STREAM_OUT,     // <<
-    STREAM_IN,      // >>
-    BITWISE_AND,    // bitwise AND
-    BITWISE_OR,     // bitwise OR
-    BITWISE_XOR,    // bitwise XOR
-    SHIFT_LEFT,     // << (alternative context)
-    SHIFT_RIGHT,    // >> (alternative context)
+    AMPERSAND,
+    ARROW,
+    STREAM_OUT,
+    STREAM_IN,
+    BITWISE_AND,
+    BITWISE_OR,
+    BITWISE_XOR,
+    SHIFT_LEFT,
+    SHIFT_RIGHT,
 
     // ========== DELIMITERS ==========
     LEFT_PAREN,
@@ -133,7 +133,7 @@ enum class TokenType {
     COMMA,
     DOT,
     COLON,
-    NEWLINE,        // For semicolon-free syntax
+    NEWLINE,
 
     // ========== PREPROCESSOR ==========
     INCLUDE,
@@ -146,10 +146,6 @@ enum class TokenType {
     UNKNOWN
 };
 
-/**
- * Token Structure
- * Represents a single lexical token
- */
 class Token {
 public:
     TokenType type;
@@ -162,9 +158,9 @@ public:
 
     std::string toString() const;
     std::string getTokenTypeString() const;
-    std::string getTokenDescription() const;      // Friendly name (e.g., "Identifier", "Assignment operator")
-    std::string getTokenPattern() const;           // Pattern description (e.g., "always start with letter")
-    std::string getDetailedFormat(int tokenNumber) const;  // Full detailed format
+    std::string getTokenDescription() const;
+    std::string getTokenPattern() const;
+    std::string getDetailedFormat(int tokenNumber) const;
 };
 
 #endif // TOKEN_H

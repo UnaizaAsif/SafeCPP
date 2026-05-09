@@ -2,116 +2,143 @@
 #include <iostream>
 #include <algorithm>
 
-std::string Symbol::toString() const {
-    std::string attrs;
-    if (isSafe) attrs += "[SAFE]";
-    if (isNullable) attrs += "[NULLABLE]";
-    
-    return "Symbol: " + name + " (" + type + ") in " + scope + 
-           " " + attrs +
-           " [" + std::to_string(line) + ":" + std::to_string(column) + "]";
+// -------------------------------------------------------
+//  Helpers
+// -------------------------------------------------------
+bool SymbolTable::isPointerType(const std::string& type) {
+    return type.find('*') != std::string::npos;
 }
 
-SymbolTable::SymbolTable() {
-    pushScope("global");
-}
-
-SymbolTable::~SymbolTable() {}
-
-void SymbolTable::pushScope(const std::string& scopeName) {
-    scopeStack.push_back(std::map<std::string, std::shared_ptr<Symbol>>());
-    currentScope = scopeName;
+// -------------------------------------------------------
+//  Scope management
+// -------------------------------------------------------
+void SymbolTable::pushScope() {
+    scopes.emplace_back();
 }
 
 void SymbolTable::popScope() {
-    if (!scopeStack.empty()) {
-        scopeStack.pop_back();
-    }
-    currentScope = "global";
+    if (!scopes.empty()) scopes.pop_back();
 }
 
-void SymbolTable::addSymbol(const std::string& name, const std::string& type, int line, int column) {
-    if (!scopeStack.empty()) {
-        auto symbol = std::make_shared<Symbol>(name, type, currentScope, line, column);
-        scopeStack.back()[name] = symbol;
-    }
+// -------------------------------------------------------
+//  Declare
+// -------------------------------------------------------
+bool SymbolTable::declare(const std::string& name,
+                          const std::string& type,
+                          int line, int col) {
+    if (scopes.empty()) pushScope();
+
+    auto& current = scopes.back();
+    if (current.count(name)) return false;   // already in this scope
+
+    SymbolEntry e;
+    e.name        = name;
+    e.type        = type;
+    e.declareLine = line;
+    e.declareCol  = col;
+    e.initState   = InitState::UNINITIALIZED;
+    e.isPointer   = isPointerType(type);
+    e.nullState   = e.isPointer ? NullState::UNKNOWN : NullState::NOT_A_POINTER;
+
+    current[name] = e;
+    return true;
 }
 
-bool SymbolTable::findSymbol(const std::string& name) const {
-    for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-        if (it->find(name) != it->end()) {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::shared_ptr<Symbol> SymbolTable::getSymbol(const std::string& name) {
-    for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-        if (it->find(name) != it->end()) {
-            return (*it)[name];
-        }
+// -------------------------------------------------------
+//  Lookup (innermost scope first)
+// -------------------------------------------------------
+SymbolEntry* SymbolTable::lookup(const std::string& name) {
+    for (int i = (int)scopes.size() - 1; i >= 0; --i) {
+        auto it = scopes[i].find(name);
+        if (it != scopes[i].end()) return &it->second;
     }
     return nullptr;
 }
 
-void SymbolTable::markSymbolUsed(const std::string& name) {
-    auto symbol = getSymbol(name);
-    if (symbol) {
-        symbol->isUsed = true;
-    }
+// -------------------------------------------------------
+//  Initialization tracking (System 1)
+// -------------------------------------------------------
+bool SymbolTable::markInitialized(const std::string& name, int line) {
+    SymbolEntry* e = lookup(name);
+    if (!e) return false;
+    e->initState  = InitState::INITIALIZED;
+    e->assignLine = line;
+    return true;
 }
 
-void SymbolTable::markSymbolSafe(const std::string& name) {
-    auto symbol = getSymbol(name);
-    if (symbol) {
-        symbol->isSafe = true;
-    }
+bool SymbolTable::checkInitialized(const std::string& name, int useLine) {
+    SymbolEntry* e = lookup(name);
+    if (!e) return true;   // unknown symbol – not our problem
+    if (e->usageLine == -1) e->usageLine = useLine;
+    return e->initState == InitState::INITIALIZED;
 }
 
-void SymbolTable::markSymbolNullable(const std::string& name) {
-    auto symbol = getSymbol(name);
-    if (symbol) {
-        symbol->isNullable = true;
-    }
+// -------------------------------------------------------
+//  Null-state tracking (System 2)
+// -------------------------------------------------------
+bool SymbolTable::markNull(const std::string& name, int line) {
+    SymbolEntry* e = lookup(name);
+    if (!e || !e->isPointer) return false;
+    e->nullState      = NullState::NULL_PTR;
+    e->nullAssignLine = line;
+    // Also treat as "initialized" for System 1
+    e->initState      = InitState::INITIALIZED;
+    e->assignLine     = line;
+    return true;
 }
 
-void SymbolTable::printSymbols() {
-    std::cout << "\n=== Symbol Table ===" << std::endl;
-    for (size_t i = 0; i < scopeStack.size(); i++) {
-        std::cout << "Scope [" << i << "]:" << std::endl;
-        for (const auto& [name, symbol] : scopeStack[i]) {
-            std::cout << "  " << symbol->toString() << std::endl;
-        }
-    }
-    std::cout << "==================" << std::endl;
+bool SymbolTable::markNonNull(const std::string& name, int line) {
+    SymbolEntry* e = lookup(name);
+    if (!e || !e->isPointer) return false;
+    e->nullState  = NullState::NONNULL;
+    e->initState  = InitState::INITIALIZED;
+    e->assignLine = line;
+    return true;
 }
 
-void SymbolTable::printUnusedSymbols() {
-    std::cout << "\n=== Unused Symbols ===" << std::endl;
-    bool found = false;
-    for (const auto& scope : scopeStack) {
-        for (const auto& [name, symbol] : scope) {
-            if (!symbol->isUsed) {
-                std::cout << "  " << symbol->toString() << std::endl;
-                found = true;
+bool SymbolTable::markMaybeNull(const std::string& name, int line) {
+    SymbolEntry* e = lookup(name);
+    if (!e || !e->isPointer) return false;
+    e->nullState = NullState::MAYBE_NULL;
+    return true;
+}
+
+bool SymbolTable::checkNullDereference(const std::string& name) {
+    SymbolEntry* e = lookup(name);
+    if (!e || !e->isPointer) return false;
+    return e->nullState == NullState::NULL_PTR ||
+           e->nullState == NullState::UNKNOWN;
+}
+
+// -------------------------------------------------------
+//  Debug dump
+// -------------------------------------------------------
+void SymbolTable::dump() const {
+    std::cout << "\n=== Symbol Table Dump ===\n";
+    for (int s = 0; s < (int)scopes.size(); ++s) {
+        std::cout << "Scope " << s << ":\n";
+        for (auto& entry : scopes[s]) {
+            const std::string& name = entry.first;
+            const SymbolEntry& e = entry.second;
+            std::cout << "  " << e.type << " " << name
+                      << "  init=";
+            switch (e.initState) {
+                case InitState::UNINITIALIZED: std::cout << "NO"; break;
+                case InitState::INITIALIZED:   std::cout << "YES"; break;
+                case InitState::MAYBE_INIT:    std::cout << "MAYBE"; break;
             }
-        }
-    }
-    if (!found) {
-        std::cout << "  (None)" << std::endl;
-    }
-    std::cout << "=====================" << std::endl;
-}
-
-void SymbolTable::printScope(const std::string& scopeName) {
-    std::cout << "\n=== Scope: " << scopeName << " ===" << std::endl;
-    for (const auto& scope : scopeStack) {
-        for (const auto& [name, symbol] : scope) {
-            if (symbol->scope == scopeName) {
-                std::cout << "  " << symbol->toString() << std::endl;
+            if (e.isPointer) {
+                std::cout << "  null=";
+                switch (e.nullState) {
+                    case NullState::NULL_PTR:  std::cout << "NULL"; break;
+                    case NullState::NONNULL:   std::cout << "SAFE"; break;
+                    case NullState::MAYBE_NULL:std::cout << "MAYBE"; break;
+                    case NullState::UNKNOWN:   std::cout << "UNKNOWN"; break;
+                    default: break;
+                }
             }
+            std::cout << "  (line " << e.declareLine << ")\n";
         }
     }
-    std::cout << std::string(20, '=') << std::endl;
+    std::cout << "========================\n";
 }

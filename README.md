@@ -1,151 +1,87 @@
-# SafeCPP: Extended C++ Lexical and Syntax Analyzer
+# SafeCPP: C++ Safety Analyzer
 
 ## Project Overview
 
-**SafeCPP** is an advanced compiler front-end that analyzes an **Extended C++** language—a superset of standard C++ that introduces safety-aware features and modern syntax enhancements. Unlike a completely new language, Extended C++ extends C++ similarly to how:
-- Objective-C extends C
-- CUDA extends C++
-- C++/CLI extends C++
-- TypeScript extends JavaScript
+**SafeCPP** is a compiler front-end that performs **static safety analysis** on C++ code to detect critical bugs **before runtime**. It focuses on two core systems that catch the most dangerous undefined behavior and memory safety violations:
 
-This project combines **lexical analysis**, **syntax analysis**, and **static safety analysis** into a unified compiler pipeline that detects vulnerabilities before compilation.
+- **System 1: Undefined Behavior Detection** — Detects uninitialized variable usage
+- **System 2: Null Pointer Safety** — Detects null pointer dereferences
 
-## Technical Significance
+Unlike traditional compilers that only check syntax, SafeCPP uses semantic analysis to understand variable lifetimes, initialization states, and pointer safety.
 
-### Why This Matters (CLO-3: No Obvious Solution)
+## Why This Matters
 
 **Problem**: Modern C++ code contains numerous latent vulnerabilities:
-- Uninitialized variable usage (System 1)
-- Null pointer dereferences (System 2)
-- Memory leaks and resource leaks (System 3-4)
-- Circular include dependencies (System 7)
+- **Uninitialized variables** — Reading garbage memory causes unpredictable behavior
+- **Null pointer dereferences** — Segmentation faults and memory corruption
 
-**Solution**: SafeCPP proactively identifies these issues using compiler-level analysis during the lexical, syntactic, and semantic phases—**before** runtime errors occur.
+**Solution**: SafeCPP proactively identifies these issues during **static analysis** before your code compiles or runs.
 
-**Innovation**: By integrating extended syntax features (let type inference, semicolon-free syntax) with static analysis, SafeCPP demonstrates how modern language design can improve both productivity and safety.
+**Innovation**: By integrating semantic analysis with lexical and syntactic parsing, SafeCPP demonstrates how compiler-level analysis prevents the most common C++ bugs.
 
-## The 8 Analysis Systems
+## The Two Core Safety Systems
 
-SafeCPP implements **8 independent analysis systems** that work together in the compilation pipeline:
+### System 1: Undefined Behavior Detection
 
-### System 1: @safe UB Detection
-Detects undefined behavior and uninitialized variable usage.
+Detects when variables are used before initialization.
 
-**Example:**
+**❌ Unsafe Code:**
 ```cpp
-@safe int x;        // Marked for safety analysis
-printf(x);          // WARNING: Uninitialized variable
+int x;              // Declared but not initialized
+int y = x + 1;      // ERROR: Using garbage value in x
 ```
+
+**✅ Safe Code:**
+```cpp
+int x = 0;          // Properly initialized
+int y = x + 1;      // OK: x has a known value
+```
+
+**What SafeCPP Will Report:**
+```
+[SEMANTIC ERROR]
+  ❌ SYSTEM 1: UNDEFINED BEHAVIOR DETECTION
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Variable 'x' was never initialized.
+  Risk: Reading garbage memory leads to unpredictable behavior.
+  Impact: Program may crash, produce wrong results, or seem to work
+          occasionally, making bugs very hard to track.
+  Location: Line 2, Column 11
+  Suggestion: Initialize variable before use (e.g., int x = 0;)
+```
+
+---
 
 ### System 2: Null Pointer Safety
-Detects null pointer dereferences without proper checks.
 
-**Example:**
+Detects when null pointers are dereferenced.
+
+**❌ Unsafe Code:**
 ```cpp
-@safe nullable int* ptr = NULL;
-*ptr = 5;           // CRITICAL: Potential null dereference
+int* ptr = nullptr;     // Explicitly set to null
+*ptr = 10;              // ERROR: Dereferencing null pointer!
 ```
 
-**Safe variant:**
+**✅ Safe Code:**
 ```cpp
-if (ptr != NULL) {
-    *ptr = 5;       // OK: Protected by check
-}
+int value = 42;
+int* ptr = &value;      // Points to valid memory
+*ptr = 100;             // OK: Dereferencing valid pointer
 ```
 
-### System 3: Memory Leak Detection
-Tracks `new`/`delete` and `malloc`/`free` operations.
-
-**Example:**
-```cpp
-int* data = new int[100];  // WARNING: Allocated but never freed
+**What SafeCPP Will Report:**
 ```
-
-**Safe variant:**
-```cpp
-@safe int* data = new int[100];
-// use data...
-delete[] data;      // Properly released
+[SEMANTIC ERROR]
+  ❌ SYSTEM 2: NULL POINTER SAFETY
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Pointer 'ptr' is DEFINITELY NULL.
+  Attempting to dereference it (access *ptr) will cause immediate crash.
+  Risk: Segmentation fault / Memory access violation.
+  Impact: Program terminates abnormally. This is a CRITICAL bug.
+  Location: Line 2, Column 1
+  Suggestion: Check that 'ptr' is not null before dereferencing.
+              Consider: if (ptr != nullptr) { ... }
 ```
-
-### System 4: Loop Leak Detection
-Detects memory/resource leaks specifically in loops.
-
-**Example:**
-```cpp
-for (int i = 0; i < 1000; i++) {
-    int* temp = new int;   // CRITICAL: Loop leak - allocated 1000 times
-    // Missing: delete temp
-}
-```
-
-**Safe variant:**
-```cpp
-for (int i = 0; i < 1000; i++) {
-    int* temp = new int;
-    // ... use temp ...
-    delete temp;    // Freed each iteration
-}
-```
-
-### System 5: let Type Inference
-Automatically infers types for `let` declarations (Extended C++ feature).
-
-**Example:**
-```cpp
-let pi = 3.14;              // Inferred: double
-let message = "SafeCPP";    // Inferred: string
-let count = 42;             // Inferred: int
-```
-
-**Output:**
-```
-NOTE [5:5]: Type inferred for 'pi' as double
-NOTE [6:5]: Type inferred for 'message' as string
-NOTE [7:5]: Type inferred for 'count' as int
-```
-
-### System 6: Semicolon-Free Syntax
-Supports optional semicolons at statement boundaries (Extended C++ feature).
-
-**Example:**
-```cpp
-int x = 5           // No semicolon - valid in Extended C++
-let y = 10
-if (x > 0) {
-    printf("positive")
-}
-```
-
-**Note:** Semicolons are still valid; they're just optional before newlines or `}`.
-
-### System 7: Include Dependency Cycle Detection
-Detects circular include dependencies using DFS.
-
-**Example:**
-```cpp
-// file_a.h
-#include "file_b.h"  // OK
-
-// file_b.h
-#include "file_a.h"  // CRITICAL: Cyclic include detected!
-```
-
-**Solution:** Use include guards:
-```cpp
-#ifndef FILE_A_H
-#define FILE_A_H
-// ... content ...
-#endif
-```
-
-### System 8: Syntax Analyzer/Parser
-**Built-in to the parser** - validates Extended C++ grammar:
-- Variable declarations with safety modifiers
-- Function declarations and calls
-- Control flow statements (if, while, for, switch)
-- Expression precedence and associativity
-- Extended syntax (let, @safe, nullable, nonnull)
 
 ## Project Architecture
 
@@ -162,20 +98,13 @@ Token Stream
     ↓
 [PHASE 2] SYNTAX ANALYSIS
     └→ Build Abstract Syntax Tree (AST)
-    └→ Validate grammar rules
-    └→ Detect parse errors
+    └→ Validate C++ grammar rules
     ↓
 Abstract Syntax Tree (AST)
     ↓
 [PHASE 3] SEMANTIC ANALYSIS
-    └→ System 1: UB Detection
-    └→ System 2: Null Safety
-    └→ System 3: Leak Detection
-    └→ System 4: Loop Leaks
-    └→ System 5: Type Inference
-    └→ System 6: Semicolon-Free Validation
-    └→ System 7: Include Cycles
-    └→ System 8: Syntax Validation
+    └→ System 1: Undefined Behavior Detection
+    └→ System 2: Null Pointer Safety
     ↓
 Analysis Report with Issues & Warnings
 ```
@@ -184,35 +113,29 @@ Analysis Report with Issues & Warnings
 
 ```
 SafeCPP/
-├── main.cpp                    # Entry point
+├── main.cpp                    # Entry point - runs demo or analyzes files
 │
 ├── lexer/
-│   ├── Lexer.h                # Lexer interface
-│   ├── Lexer.cpp              # Pure tokenization
-│   ├── Token.h                # Token types & structure
+│   ├── Lexer.h                # Tokenizer interface
+│   ├── Lexer.cpp              # Tokenization implementation
+│   ├── Token.h                # Token types & definitions
 │   └── Token.cpp              # Token implementation
 │
 ├── parser/
 │   ├── Parser.h               # Parser/AST interface
-│   └── Parser.cpp             # Extended C++ grammar validation
+│   └── Parser.cpp             # C++ grammar validation
 │
-├── analyzer/
-│   ├── SafetyAnalyzer.h       # 8 safety systems
-│   ├── SafetyAnalyzer.cpp     # Analysis implementation
-│   ├── DependencyGraph.h      # Include cycle detection
-│   └── DependencyGraph.cpp    # Graph algorithms (DFS)
+├── semantic/
+│   ├── SemanticAnalyzer.h     # Safety analysis interface
+│   ├── SemanticAnalyzer.cpp   # Systems 1 & 2 implementation
+│   └── SemanticError.h        # Error reporting
 │
 ├── utils/
 │   ├── SymbolTable.h          # Symbol tracking
-│   └── SymbolTable.cpp        # Scope management
+│   └── SymbolTable.cpp        # Scope management & initialization tracking
 │
 ├── samples/
-│   ├── demo1.cpp              # Systems 5 & 6: Type inference & syntax
-│   ├── demo2.cpp              # Systems 1-4, 7: Safety issues
-│   └── full_demo.cpp          # All systems demonstrated
-│
-├── output/
-│   └── token_output.txt       # Analysis output placeholder
+│   └── demo3.cpp              # Example test case
 │
 ├── Makefile                   # Build configuration
 └── README.md                  # This file
@@ -224,23 +147,33 @@ SafeCPP/
 - C++17 compatible compiler (g++, clang, MSVC)
 - Make or CMake
 
-### Build (Linux/macOS)
+**Linux/macOS:**
 ```bash
 make
 ```
 
-### Build (Windows with MinGW)
+**Windows (with MinGW or MSVC):**
 ```bash
 g++ main.cpp lexer/Lexer.cpp lexer/Token.cpp parser/Parser.cpp \
-    analyzer/SafetyAnalyzer.cpp analyzer/DependencyGraph.cpp \
-    utils/SymbolTable.cpp -std=c++17 -o safecpp.exe
+    semantic/SemanticAnalyzer.cpp utils/SymbolTable.cpp -std=c++17 -o safecpp.exe
 ```
 
 ### Run
+
+**Demo (shows all test cases):**
 ```bash
-./safecpp samples/demo1.cpp
-./safecpp samples/demo2.cpp
-./safecpp samples/full_demo.cpp
+./safecpp --demo
+```
+
+**Analyze a specific file:**
+```bash
+./safecpp samples/demo3.cpp
+./safecpp your_code.cpp
+```
+
+**Show detailed token information:**
+```bash
+./safecpp samples/demo3.cpp --tokens
 ```
 
 ### Clean
@@ -248,167 +181,130 @@ g++ main.cpp lexer/Lexer.cpp lexer/Token.cpp parser/Parser.cpp \
 make clean
 ```
 
-## Test Cases (8 Systems)
+## Test Cases
 
-### Test 1: Type Inference (System 5)
-**Input:**
+### Test 1: Uninitialized Variable (System 1 — ERROR)
+**File:** `samples/demo3.cpp`
 ```cpp
-let x = 42
+int x;              // Not initialized
+std::cout << x;     // ERROR: Using uninitialized x
 ```
 **Expected Output:**
 ```
-NOTE [1:1]: Type inferred for 'x' as int
+[SEMANTIC ERROR]
+  ❌ SYSTEM 1: UNDEFINED BEHAVIOR DETECTION
+  Variable 'x' was never initialized...
 ```
-
-### Test 2: Null Pointer Safety (System 2)
-**Input:**
-```cpp
-@safe nullable int* ptr = NULL;
-*ptr = 5;
-```
-**Expected Output:**
-```
-CRITICAL [2:1]: Potential null pointer dereference
-```
-
-### Test 3: Memory Leak (System 3)
-**Input:**
-```cpp
-int* data = new int[100];
-```
-**Expected Output:**
-```
-WARNING [1:1]: Memory leak detected - allocated memory not freed
-```
-
-### Test 4: Loop Leak (System 4)
-**Input:**
-```cpp
-for (int i = 0; i < 10; i++) {
-    int* x = new int;
-}
-```
-**Expected Output:**
-```
-CRITICAL [2:5]: Loop leak - memory allocated in loop without cleanup
-```
-
-### Test 5: Include Cycle (System 7)
-**Input files:**
-- a.h: `#include "b.h"`
-- b.h: `#include "a.h"`
-
-**Expected Output:**
-```
-CRITICAL: Cyclic include detected: a.h → b.h → a.h
-```
-
-### Test 6: Uninitialized Variable (System 1)
-**Input:**
-```cpp
-int x;
-printf(x);
-```
-**Expected Output:**
-```
-WARNING [2:1]: Use of uninitialized variable 'x'
-```
-
-### Test 7: Semicolon-Free (System 6)
-**Input:**
-```cpp
-let x = 5
-let y = 10
-```
-**Expected Output:**
-```
-NOTE: Semicolon-free syntax validated
-```
-
-### Test 8: Parser Validation (System 8)
-**Input (invalid syntax):**
-```cpp
-int x = ;
-```
-**Expected Output:**
-```
-SYNTAX_ERROR [1:8]: Expected expression
-```
-
-## Key Assumptions & Limitations
-
-### Assumptions
-1. **C++17 Compliance**: Code uses C++17 or newer syntax
-2. **Extended C++ Dialect**: Code may use Extended C++ features (let, @safe, etc.)
-3. **Single-Pass Analysis**: Analysis is performed in one pass after parsing
-4. **No Execution**: Analysis is purely static; no code execution
-5. **Include Files Available**: All included files are accessible during analysis
-
-### Limitations
-1. **Template Analysis**: Limited support for C++ templates
-2. **Macro Expansion**: Preprocessor macros not fully expanded
-3. **Type System**: Simplified type inference (does not cover all C++ types)
-4. **Data Flow**: Limited interprocedural data flow analysis
-5. **External Libraries**: Cannot analyze code in external libraries
-6. **Performance**: Worst-case analysis may be slow for very large codebases
-
-## Academic Justification (CPA)
-
-### CPA-1: Non-Obvious Solution
-Combining lexical analysis, syntax validation, and static safety analysis into one tool requires:
-- Deep understanding of compiler design
-- Knowledge of graph algorithms (cycle detection)
-- Expertise in static analysis techniques
-- No straightforward off-the-shelf solution exists
-
-### CPA-2: Technical Complexity
-Implementation demonstrates:
-- **Compiler theory**: Lexing, parsing, AST construction
-- **Formal languages**: Grammar rules, precedence analysis
-- **Graph theory**: DFS for cycle detection
-- **Data structures**: Symbol tables, scope management
-- **Software engineering**: Multi-phase architecture, visitor pattern, error handling
-
-### CPA-3: Real-World Applicability
-Solves actual problems in modern C++ development:
-- **Safety**: Prevents entire classes of runtime errors
-- **Developer Productivity**: Automatic type inference, flexible syntax
-- **Code Quality**: Identifies latent bugs before runtime
-- **Dependency Management**: Detects circular includes early
-
-## Future Enhancements
-
-- [ ] Full C++20 support
-- [ ] Advanced data flow analysis
-- [ ] Taint analysis for security
-- [ ] IDE integration (VS Code, IntelliJ)
-- [ ] Configuration files for analysis rules
-- [ ] CI/CD pipeline integration
-- [ ] Performance profiling and optimization
-- [ ] Support for custom analyzer plugins
-
-## References & Resources
-
-- **Compilers: Principles, Techniques, and Tools** (Dragon Book) - Aho, Lam, Sethi, Ullman
-- **Engineering a Compiler** - Cooper & Torczon
-- **Static Program Analysis** - Nielsen, Nielsen, Hankin
-- **C++ Standard Library Reference**
-
-## License
-
-[Add license information]
-
-## Author
-
-[Your Name/Organization]
-
-## Contact & Support
-
-For issues, questions, or contributions, please contact [your-contact-info].
 
 ---
 
-**Last Updated:** May 2026
+### Test 2: Null Pointer Dereference (System 2 — CRITICAL ERROR)
+```cpp
+int* ptr = nullptr;
+*ptr = 10;          // ERROR: Dereferencing null pointer
+```
+**Expected Output:**
+```
+[SEMANTIC ERROR]
+  ❌ SYSTEM 2: NULL POINTER SAFETY
+  Pointer 'ptr' is DEFINITELY NULL...
+```
 
-**Status:** Academic Project - CT-367 Compiler Design Course
+---
+
+### Test 3: Safe Code (NO ERRORS)
+```cpp
+int x = 0;          // Properly initialized
+int y = x + 1;      // OK
+```
+**Expected Output:**
+```
+[ANALYSIS SUMMARY]
+  No safety issues detected. Code is clean.
+```
+
+---
+
+### Test 4: Safe Pointer (NO ERRORS)
+```cpp
+int value = 42;
+int* ptr = &value;
+*ptr = 100;         // OK: Valid dereference
+```
+**Expected Output:**
+```
+[ANALYSIS SUMMARY]
+  No safety issues detected. Code is clean.
+```
+
+## How It Works
+
+### System 1: Undefined Behavior Detection
+
+SafeCPP maintains a **symbol table** that tracks:
+- Variables declared in the current scope
+- Whether each variable has been initialized
+- The initialization location
+
+When it encounters a variable use (e.g., `x + 1`), it checks:
+1. Is the variable declared?
+2. Has it been initialized?
+3. If not → Report `UNINITIALIZED_USE` error
+
+### System 2: Null Pointer Safety
+
+SafeCPP tracks pointer states:
+- Is the pointer initialized?
+- Is it definitely null? (assigned `nullptr` or `0`)
+- Is it definitely non-null? (assigned a valid address)
+- Is it unknown? (assigned from another variable)
+
+When it encounters a dereference (`*ptr`), it checks:
+1. Is the pointer initialized?
+2. What is its null state?
+3. If null → Report `NULL_DEREF` error
+4. If unknown → Report `MAYBE_NULL_DEREF` warning
+
+---
+
+## Error Messages Explained
+
+Each error message includes:
+
+| Part | Purpose |
+|------|----------|
+| **System Identifier** | Which safety system detected the issue |
+| **Variable Name** | The problematic variable or pointer |
+| **Risk Description** | What bad thing will happen |
+| **Impact** | How the program will be affected |
+| **Location** | Exact line and column in source code |
+| **Suggestion** | How to fix the problem |
+
+**Example:**
+```
+❌ SYSTEM 1: UNDEFINED BEHAVIOR DETECTION
+Variable 'x' was never initialized.
+Risk: Reading garbage memory leads to unpredictable behavior.
+Impact: Program may crash, produce wrong results, or seem to work
+        occasionally, making bugs very hard to track.
+Location: Line 5, Column 10
+Suggestion: Initialize variable before use (e.g., int x = 0;)
+```
+
+---
+
+## Limitations & Future Work
+
+**Current Limitations:**
+- Only analyzes simple variable declarations and assignments
+- Does not perform inter-procedural analysis (across function calls)
+- Does not handle complex control flow (loops with conditional assignments)
+- Does not track pointer ownership or lifetime
+
+**Future Enhancements:**
+- Control flow analysis for conditional initialization
+- Function-level data flow analysis
+- Smart pointer support (std::unique_ptr, std::shared_ptr)
+- Reference tracking
+- Use-after-free detection
 

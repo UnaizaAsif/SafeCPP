@@ -19,32 +19,22 @@ char Lexer::peekChar() {
 
 void Lexer::advance() {
     if (position < source.length()) {
-        if (source[position] == '\n') {
-            line++;
-            column = 1;
-        } else {
-            column++;
-        }
+        if (source[position] == '\n') { line++; column = 1; }
+        else column++;
         position++;
     }
 }
 
 void Lexer::skipWhitespace() {
-    while (currentChar() != '\n' && std::isspace(currentChar())) {
-        advance();
-    }
+    while (currentChar() != '\n' && std::isspace(currentChar())) advance();
 }
 
 void Lexer::skipComment() {
     if (currentChar() == '/' && peekChar() == '/') {
-        while (currentChar() != '\n' && currentChar() != '\0') {
-            advance();
-        }
+        while (currentChar() != '\n' && currentChar() != '\0') advance();
     } else if (currentChar() == '/' && peekChar() == '*') {
         advance(); advance();
-        while (!(currentChar() == '*' && peekChar() == '/') && currentChar() != '\0') {
-            advance();
-        }
+        while (!(currentChar() == '*' && peekChar() == '/') && currentChar() != '\0') advance();
         if (currentChar() == '*') advance();
         if (currentChar() == '/') advance();
     }
@@ -54,13 +44,10 @@ Token Lexer::readNumber() {
     int startLine = line, startColumn = column;
     std::string num;
     bool isFloat = false;
-    
     while (std::isdigit(currentChar()) || (currentChar() == '.' && !isFloat)) {
         if (currentChar() == '.') isFloat = true;
-        num += currentChar();
-        advance();
+        num += currentChar(); advance();
     }
-    
     return Token(isFloat ? TokenType::FLOAT : TokenType::INTEGER, num, startLine, startColumn);
 }
 
@@ -69,7 +56,6 @@ Token Lexer::readString() {
     char quote = currentChar();
     std::string str;
     advance();
-    
     while (currentChar() != quote && currentChar() != '\0') {
         if (currentChar() == '\\') {
             advance();
@@ -77,16 +63,12 @@ Token Lexer::readString() {
                 case 'n': str += '\n'; break;
                 case 't': str += '\t'; break;
                 case '\\': str += '\\'; break;
-                case '"': str += '"'; break;
-                default: str += currentChar();
+                case '"':  str += '"';  break;
+                default:   str += currentChar();
             }
             advance();
-        } else {
-            str += currentChar();
-            advance();
-        }
+        } else { str += currentChar(); advance(); }
     }
-    
     if (currentChar() == quote) advance();
     return Token(TokenType::STRING, str, startLine, startColumn);
 }
@@ -94,187 +76,65 @@ Token Lexer::readString() {
 Token Lexer::readIdentifier() {
     int startLine = line, startColumn = column;
     std::string id;
-    
     while (std::isalnum(currentChar()) || currentChar() == '_') {
-        id += currentChar();
-        advance();
+        id += currentChar(); advance();
     }
-    
-    // Keyword mapping
     static const std::map<std::string, TokenType> keywords = {
-        // Data types
-        {"int", TokenType::INT},
-        {"float", TokenType::FLOAT_KW},
-        {"double", TokenType::DOUBLE},
-        {"char", TokenType::CHAR},
-        {"void", TokenType::VOID},
-        {"bool", TokenType::BOOL},
-        
-        // Control flow
-        {"if", TokenType::IF},
-        {"else", TokenType::ELSE},
-        {"while", TokenType::WHILE},
-        {"for", TokenType::FOR},
-        {"return", TokenType::RETURN},
-        {"break", TokenType::BREAK},
-        {"continue", TokenType::CONTINUE},
-        {"switch", TokenType::SWITCH},
-        {"case", TokenType::CASE},
-        {"goto", TokenType::GOTO},
-        {"default", TokenType::DEFAULT},
-
-        // Class/struct keywords
-        {"class", TokenType::CLASS},
-        {"struct", TokenType::STRUCT},
-        {"public", TokenType::PUBLIC},
-        {"private", TokenType::PRIVATE},
-        {"protected", TokenType::PROTECTED},
-        {"virtual", TokenType::VIRTUAL},
-        {"this", TokenType::THIS},
-        {"operator", TokenType::OPERATOR},
-        
-        // Qualifiers
-        {"static", TokenType::STATIC},
-        {"const", TokenType::CONST},
-        {"auto", TokenType::AUTO},
-        {"mutable", TokenType::MUTABLE},
-        {"explicit", TokenType::EXPLICIT},
-        {"final", TokenType::FINAL},
-        {"override", TokenType::OVERRIDE},
-        
-        // Extended type keywords
-        {"short", TokenType::SHORT},
-        {"long", TokenType::LONG},
-        {"signed", TokenType::SIGNED},
-        {"unsigned", TokenType::UNSIGNED},
-        {"wchar_t", TokenType::WCHAR_T},
-        {"char16_t", TokenType::CHAR16_T},
-        {"char32_t", TokenType::CHAR32_T},
-        {"char8_t", TokenType::CHAR8_T},
-        
-        // Template/namespace
-        {"template", TokenType::TEMPLATE},
-        {"typename", TokenType::TYPENAME},
-        {"using", TokenType::USING},
-        {"namespace", TokenType::NAMESPACE},
-        
-        // Exceptions
-        {"try", TokenType::TRY},
-        {"catch", TokenType::CATCH},
-        {"throw", TokenType::THROW},
-        
-        // Boolean literals
-        {"true", TokenType::TRUE_KW},
-        {"false", TokenType::FALSE_KW},
-        
-        // Function keyword
-        {"function", TokenType::FUNCTION},
-        
-        // Safety keywords (Extended C++)
-        {"safe", TokenType::SAFE},
-        {"let", TokenType::LET},
-        {"nullable", TokenType::NULLABLE},
-        {"nonnull", TokenType::NONNULL},
-        
-        // Memory/type keywords
-        {"new", TokenType::NEW},
-        {"delete", TokenType::DELETE},
-        {"nullptr", TokenType::NULLPTR},
-        {"NULL", TokenType::NULL_KW},
-        {"sizeof", TokenType::SIZEOF},
-        
-        // I/O stream keywords
-        {"cout", TokenType::COUT},
-        {"cin", TokenType::CIN},
-        
-        // Preprocessor
-        {"include", TokenType::INCLUDE},
-        {"define", TokenType::DEFINE},
-        {"ifndef", TokenType::IFNDEF},
-        {"endif", TokenType::ENDIF}
+        {"int",TokenType::INT},{"float",TokenType::FLOAT_KW},{"double",TokenType::DOUBLE},
+        {"char",TokenType::CHAR},{"void",TokenType::VOID},{"bool",TokenType::BOOL},
+        {"if",TokenType::IF},{"else",TokenType::ELSE},{"while",TokenType::WHILE},
+        {"for",TokenType::FOR},{"return",TokenType::RETURN},{"break",TokenType::BREAK},
+        {"continue",TokenType::CONTINUE},{"switch",TokenType::SWITCH},{"case",TokenType::CASE},
+        {"goto",TokenType::GOTO},{"default",TokenType::DEFAULT},
+        {"class",TokenType::CLASS},{"struct",TokenType::STRUCT},{"public",TokenType::PUBLIC},
+        {"private",TokenType::PRIVATE},{"protected",TokenType::PROTECTED},
+        {"virtual",TokenType::VIRTUAL},{"this",TokenType::THIS},{"operator",TokenType::OPERATOR},
+        {"static",TokenType::STATIC},{"const",TokenType::CONST},{"auto",TokenType::AUTO},
+        {"mutable",TokenType::MUTABLE},{"explicit",TokenType::EXPLICIT},
+        {"final",TokenType::FINAL},{"override",TokenType::OVERRIDE},
+        {"short",TokenType::SHORT},{"long",TokenType::LONG},{"signed",TokenType::SIGNED},
+        {"unsigned",TokenType::UNSIGNED},{"wchar_t",TokenType::WCHAR_T},
+        {"char16_t",TokenType::CHAR16_T},{"char32_t",TokenType::CHAR32_T},
+        {"char8_t",TokenType::CHAR8_T},
+        {"template",TokenType::TEMPLATE},{"typename",TokenType::TYPENAME},
+        {"using",TokenType::USING},{"namespace",TokenType::NAMESPACE},
+        {"try",TokenType::TRY},{"catch",TokenType::CATCH},{"throw",TokenType::THROW},
+        {"true",TokenType::TRUE_KW},{"false",TokenType::FALSE_KW},
+        {"function",TokenType::FUNCTION},{"safe",TokenType::SAFE},{"let",TokenType::LET},
+        {"nullable",TokenType::NULLABLE},{"nonnull",TokenType::NONNULL},
+        {"new",TokenType::NEW},{"delete",TokenType::DELETE},{"nullptr",TokenType::NULLPTR},
+        {"NULL",TokenType::NULL_KW},{"sizeof",TokenType::SIZEOF},
+        {"cout",TokenType::COUT},{"cin",TokenType::CIN},
+        {"include",TokenType::INCLUDE},{"define",TokenType::DEFINE},
+        {"ifndef",TokenType::IFNDEF},{"endif",TokenType::ENDIF}
     };
-    
     auto it = keywords.find(id);
-    if (it != keywords.end()) {
-        return Token(it->second, id, startLine, startColumn);
-    }
-    
+    if (it != keywords.end()) return Token(it->second, id, startLine, startColumn);
     return Token(TokenType::IDENTIFIER, id, startLine, startColumn);
 }
 
 Token Lexer::nextToken() {
     skipWhitespace();
-    
     while (currentChar() == '/' && (peekChar() == '/' || peekChar() == '*')) {
-        skipComment();
-        skipWhitespace();
+        skipComment(); skipWhitespace();
     }
-    
     int startLine = line, startColumn = column;
     char ch = currentChar();
-    
-    if (ch == '\0') {
-        return Token(TokenType::END_OF_FILE, "", startLine, startColumn);
-    }
-    
-    if (ch == '\n') {
-        advance();
-        return Token(TokenType::NEWLINE, "\\n", startLine, startColumn);
-    }
-    
-    if (std::isdigit(ch)) {
-        return readNumber();
-    }
-    
-    if (ch == '"' || ch == '\'') {
-        return readString();
-    }
-    
-    if (std::isalpha(ch) || ch == '_') {
-        return readIdentifier();
-    }
-    
+    if (ch == '\0') return Token(TokenType::END_OF_FILE, "", startLine, startColumn);
+    if (ch == '\n') { advance(); return Token(TokenType::NEWLINE, "\\n", startLine, startColumn); }
+    if (std::isdigit(ch)) return readNumber();
+    if (ch == '"' || ch == '\'') return readString();
+    if (std::isalpha(ch) || ch == '_') return readIdentifier();
     advance();
-    
-    // Two-character operators
-    if (ch == '=' && currentChar() == '=') {
-        advance();
-        return Token(TokenType::EQUAL, "==", startLine, startColumn);
-    }
-    if (ch == '!' && currentChar() == '=') {
-        advance();
-        return Token(TokenType::NOT_EQUAL, "!=", startLine, startColumn);
-    }
-    if (ch == '<' && currentChar() == '=') {
-        advance();
-        return Token(TokenType::LESS_EQUAL, "<=", startLine, startColumn);
-    }
-    if (ch == '<' && currentChar() == '<') {
-        advance();
-        return Token(TokenType::STREAM_OUT, "<<", startLine, startColumn);
-    }
-    if (ch == '>' && currentChar() == '=') {
-        advance();
-        return Token(TokenType::GREATER_EQUAL, ">=", startLine, startColumn);
-    }
-    if (ch == '>' && currentChar() == '>') {
-        advance();
-        return Token(TokenType::STREAM_IN, ">>", startLine, startColumn);
-    }
-    if (ch == '&' && currentChar() == '&') {
-        advance();
-        return Token(TokenType::LOGICAL_AND, "&&", startLine, startColumn);
-    }
-    if (ch == '|' && currentChar() == '|') {
-        advance();
-        return Token(TokenType::LOGICAL_OR, "||", startLine, startColumn);
-    }
-    if (ch == '-' && currentChar() == '>') {
-        advance();
-        return Token(TokenType::ARROW, "->", startLine, startColumn);
-    }
-    
-    // Single character tokens
+    if (ch == '=' && currentChar() == '=') { advance(); return Token(TokenType::EQUAL, "==", startLine, startColumn); }
+    if (ch == '!' && currentChar() == '=') { advance(); return Token(TokenType::NOT_EQUAL, "!=", startLine, startColumn); }
+    if (ch == '<' && currentChar() == '=') { advance(); return Token(TokenType::LESS_EQUAL, "<=", startLine, startColumn); }
+    if (ch == '<' && currentChar() == '<') { advance(); return Token(TokenType::STREAM_OUT, "<<", startLine, startColumn); }
+    if (ch == '>' && currentChar() == '=') { advance(); return Token(TokenType::GREATER_EQUAL, ">=", startLine, startColumn); }
+    if (ch == '>' && currentChar() == '>') { advance(); return Token(TokenType::STREAM_IN, ">>", startLine, startColumn); }
+    if (ch == '&' && currentChar() == '&') { advance(); return Token(TokenType::LOGICAL_AND, "&&", startLine, startColumn); }
+    if (ch == '|' && currentChar() == '|') { advance(); return Token(TokenType::LOGICAL_OR, "||", startLine, startColumn); }
+    if (ch == '-' && currentChar() == '>') { advance(); return Token(TokenType::ARROW, "->", startLine, startColumn); }
     switch (ch) {
         case '+': return Token(TokenType::PLUS, "+", startLine, startColumn);
         case '-': return Token(TokenType::MINUS, "-", startLine, startColumn);
@@ -296,19 +156,17 @@ Token Lexer::nextToken() {
         case '>': return Token(TokenType::GREATER_THAN, ">", startLine, startColumn);
         case '&': return Token(TokenType::AMPERSAND, "&", startLine, startColumn);
         case ':': return Token(TokenType::COLON, ":", startLine, startColumn);
-        default: return Token(TokenType::UNKNOWN, std::string(1, ch), startLine, startColumn);
+        default:  return Token(TokenType::UNKNOWN, std::string(1, ch), startLine, startColumn);
     }
 }
 
 std::vector<Token> Lexer::tokenize() {
     std::vector<Token> tokens;
     Token token = nextToken();
-    
     while (token.type != TokenType::END_OF_FILE) {
         tokens.push_back(token);
         token = nextToken();
     }
-    
     tokens.push_back(token);
     return tokens;
 }

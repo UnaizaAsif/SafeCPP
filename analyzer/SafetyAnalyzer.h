@@ -1,3 +1,17 @@
+/**
+ * CORRECTED DESIGN: Stateful Global Variable Tracking
+ * 
+ * PRINCIPLE: Safety analysis is ALWAYS ACTIVE for all code.
+ * 
+ * The analyzer acts as a STATEFUL COMPILER FRONTEND:
+ * - Automatically tracks EVERY variable (no annotations required)
+ * - Maintains initialization state across the program
+ * - Detects safety issues at usage points
+ * - Produces COMPILER-STYLE DIAGNOSTICS (not just tokens)
+ * 
+ * This is similar to how Rust, Clang, and GCC perform analysis.
+ */
+
 #ifndef SAFETY_ANALYZER_H
 #define SAFETY_ANALYZER_H
 
@@ -8,6 +22,8 @@
 #include <string>
 #include <memory>
 #include <map>
+#include <set>
+#include <unordered_map>
 
 /**
  * Safety Issue Severity Levels
@@ -110,37 +126,82 @@ private:
     std::map<std::string, std::set<std::string>> fileIncludes;
     int nestedLoopDepth;
 
+    // ===== SYSTEM 1: Uninitialized Variable Tracking =====
+    std::map<std::string, bool> varInitialized;          // Track which vars are initialized
+    std::map<std::string, int> varDeclarationLine;       // Track where var was declared
+    std::set<std::string> safeAnnotatedVars;             // Variables marked with @safe
+    
+    // ===== SYSTEM 2: Null Pointer Tracking =====
+    std::map<std::string, bool> nullableVariables;       // Track nullable pointers
+    std::set<std::string> nullCheckPerformed;            // Track where null checks exist
+    std::map<std::string, std::vector<int>> pointerUsages; // Track where pointers are used
+    
+    // ===== SYSTEM 3 & 4: Memory Allocation Tracking =====
+    struct MemoryAllocation {
+        std::string varName;
+        int allocLine;
+        int allocColumn;
+        bool deallocated;
+        int deallocLine;
+        int loopDepth;
+    };
+    std::vector<MemoryAllocation> allocations;           // All memory allocations
+    std::map<std::string, std::vector<MemoryAllocation>> loopAllocations;
+    
+    // ===== SYSTEM 5: Type Inference =====
+    std::map<std::string, std::string> inferredTypes;    // Map of let variables to inferred types
+    std::set<std::string> letVariables;                  // Variables declared with 'let'
+    
+    // ===== SYSTEM 6: Semicolon Tracking =====
+    int missingSemicolonCount;                           // Count of auto-inserted semicolons
+    std::vector<int> semicolonInsertedLines;             // Lines where semicolons were inserted
+    
+    // ===== SYSTEM 7: Include Dependency Graph =====
+    std::map<std::string, std::vector<std::string>> includeDependencies;  // File -> includes
+    std::set<std::string> cycleNodes;                    // Files involved in cycles
+
     // Analysis methods for each system
     void analyzeNode(std::shared_ptr<ASTNode> node);
     
     // SYSTEM 1: Uninitialized Variable Detection
     void checkUninitializedVariables();
     void checkVariableInitialization(std::shared_ptr<VariableDecl> varDecl);
+    void trackVariableUsage(std::shared_ptr<ASTNode> node);
     
     // SYSTEM 2: Null Pointer Safety
     void checkNullPointerSafety();
-    void checkPointerDereference();
+    void checkPointerDereference(std::shared_ptr<ASTNode> node);
     void checkNullablePointers();
+    void trackNullableDeclaration(const std::string& varName);
+    void trackNullCheck(const std::string& varName, int line);
     
     // SYSTEM 3: Memory Leak Detection
     void checkMemoryLeaks();
-    void trackMemoryAllocations();
+    void trackMemoryAllocations(std::shared_ptr<ASTNode> node);
+    void trackAllocation(const std::string& varName, int line, int col);
+    void trackDeallocation(const std::string& varName, int line);
     
     // SYSTEM 4: Loop Leak Detection
     void checkLoopLeaks();
-    void trackLoopAllocations();
+    void trackLoopAllocations(std::shared_ptr<ASTNode> node);
+    void enterLoop();
+    void exitLoop();
     
     // SYSTEM 5: Type Inference
     void performTypeInference();
     std::string inferType(std::shared_ptr<ASTNode> expr);
+    std::string inferTypeFromValue(const std::string& value);
     
     // SYSTEM 6: Semicolon-Free Syntax
     void validateSemicolonFree();
+    void registerSemicolonInsert(int line);
     
     // SYSTEM 7: Include Dependency
     void checkIncludeCycles();
+    void trackIncludeFile(const std::string& from, const std::string& to);
     bool hasCycle(const std::string& file, std::set<std::string>& visited, 
                   std::set<std::string>& recStack);
+    std::vector<std::string> findCyclePath(const std::string& start);
     
     // SYSTEM 8: Syntax Validation (from Parser errors)
     void checkParserErrors();
@@ -157,6 +218,14 @@ public:
      */
     void analyze();
 
+    // Include tracking methods
+    void addIncludeFile(const std::string& from, const std::string& to);
+    
+    // Variable annotation methods
+    void markVariableSafe(const std::string& varName);
+    void markVariableNullable(const std::string& varName);
+    void markVariableLet(const std::string& varName);
+    
     // Getters
     const std::vector<SafetyIssue>& getIssues() const;
     bool hasErrors() const;
@@ -168,6 +237,7 @@ public:
     void printReport();
     void printDetailedReport();
     void printSummary();
+    void printSystemReport(int systemNumber);
 };
 
 #endif // SAFETY_ANALYZER_H

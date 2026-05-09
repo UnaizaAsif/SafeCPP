@@ -6,13 +6,6 @@
 #include <string>
 #include <map>
 
-/**
- * Lexical Analyzer (Lexer)
- * Converts source code into tokens
- * 
- * This is a pure lexical analyzer - it ONLY tokenizes.
- * No semantic analysis is done here.
- */
 class Lexer {
 private:
     std::string source;
@@ -20,16 +13,11 @@ private:
     int line;
     int column;
 
-    // Character operations
     char currentChar();
     char peekChar();
     void advance();
-
-    // Lexing utilities
     void skipWhitespace();
     void skipComment();
-
-    // Token readers
     Token readNumber();
     Token readString();
     Token readIdentifier();

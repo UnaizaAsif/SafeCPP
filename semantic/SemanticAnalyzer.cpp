@@ -1,0 +1,391 @@
+#include "SemanticAnalyzer.h"
+#include <iostream>
+#include <set>
+
+// ----------------------------------------------------------------
+//  Construction
+// ----------------------------------------------------------------
+SemanticAnalyzer::SemanticAnalyzer(const std::vector<Token>& tokens,
+                                   ErrorReporter&            reporter)
+    : tokens(tokens), reporter(reporter), pos(0) {
+    symTable.pushScope(); // global scope
+}
+
+// ----------------------------------------------------------------
+//  Token navigation
+// ----------------------------------------------------------------
+const Token& SemanticAnalyzer::cur() const {
+    static Token eof(TokenType::END_OF_FILE, "", 0, 0);
+    if (pos >= tokens.size()) return eof;
+    return tokens[pos];
+}
+
+const Token& SemanticAnalyzer::peek(int offset) const {
+    static Token eof(TokenType::END_OF_FILE, "", 0, 0);
+    size_t idx = pos + offset;
+    if (idx >= tokens.size()) return eof;
+    return tokens[idx];
+}
+
+bool SemanticAnalyzer::at(TokenType t) const { return cur().type == t; }
+
+bool SemanticAnalyzer::atEnd() const {
+    return pos >= tokens.size() || at(TokenType::END_OF_FILE);
+}
+
+void SemanticAnalyzer::advance() {
+    if (!atEnd()) ++pos;
+}
+
+bool SemanticAnalyzer::match(TokenType t) {
+    if (at(t)) { advance(); return true; }
+    return false;
+}
+
+// ----------------------------------------------------------------
+//  Classifier helpers
+// ----------------------------------------------------------------
+bool SemanticAnalyzer::isTypeKeyword(TokenType t) const {
+    switch (t) {
+        case TokenType::INT:      case TokenType::FLOAT_KW:
+        case TokenType::DOUBLE:   case TokenType::CHAR:
+        case TokenType::BOOL:     case TokenType::VOID:
+        case TokenType::SHORT:    case TokenType::LONG:
+        case TokenType::UNSIGNED: case TokenType::SIGNED:
+        case TokenType::AUTO:     case TokenType::WCHAR_T:
+        case TokenType::CHAR16_T: case TokenType::CHAR32_T:
+        case TokenType::CHAR8_T:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool SemanticAnalyzer::isNullLiteral(TokenType t) const {
+    return t == TokenType::NULLPTR || t == TokenType::NULL_KW;
+}
+
+bool SemanticAnalyzer::isPointerType(const std::string& raw) const {
+    return raw.find('*') != std::string::npos;
+}
+
+// ----------------------------------------------------------------
+//  Collect a type string (e.g. "int", "int*", "double**")
+// ----------------------------------------------------------------
+std::string SemanticAnalyzer::collectType() {
+    std::string result;
+
+    // Optional modifiers: const, signed, unsigned, short, long
+    while (isTypeKeyword(cur().type) &&
+           (cur().type == TokenType::CONST   ||
+            cur().type == TokenType::SIGNED  ||
+            cur().type == TokenType::UNSIGNED||
+            cur().type == TokenType::SHORT   ||
+            cur().type == TokenType::LONG)) {
+        result += cur().value + " ";
+        advance();
+    }
+
+    // Base type
+    if (isTypeKeyword(cur().type) || at(TokenType::IDENTIFIER)) {
+        result += cur().value;
+        advance();
+    }
+
+    // Skip template parameters: vector<int>
+    if (at(TokenType::LESS_THAN)) {
+        int depth = 1;
+        advance();
+        while (depth > 0 && !atEnd()) {
+            if (at(TokenType::LESS_THAN))    depth++;
+            if (at(TokenType::GREATER_THAN)) depth--;
+            advance();
+        }
+        result += "<...>";
+    }
+
+    // Pointer / reference markers
+    while (at(TokenType::MULTIPLY) || at(TokenType::AMPERSAND)) {
+        result += cur().value;
+        advance();
+    }
+
+    return result;
+}
+
+// ----------------------------------------------------------------
+//  Skip to end of statement (;  or newline at top level)
+// ----------------------------------------------------------------
+void SemanticAnalyzer::skipToStatementEnd() {
+    while (!atEnd() &&
+           !at(TokenType::SEMICOLON) &&
+           !at(TokenType::NEWLINE)   &&
+           !at(TokenType::RIGHT_BRACE)) {
+        advance();
+    }
+    match(TokenType::SEMICOLON);
+    match(TokenType::NEWLINE);
+}
+
+// ----------------------------------------------------------------
+//  Process an assignment (already past the '=')
+// ----------------------------------------------------------------
+void SemanticAnalyzer::processAssignment(const std::string& name,
+                                         int line, int col) {
+    // Decide null vs non-null for System 2
+    if (isNullLiteral(cur().type) ||
+        (at(TokenType::INTEGER) && cur().value == "0")) {
+        symTable.markNull(name, line);
+    } else {
+        symTable.markNonNull(name, line);
+    }
+
+    // Always mark initialized for System 1
+    symTable.markInitialized(name, line);
+}
+
+// ----------------------------------------------------------------
+//  Process a use of an identifier (not as assignment target)
+// ----------------------------------------------------------------
+void SemanticAnalyzer::processUse(const std::string& name,
+                                  int line, int col) {
+    // System 1 – check initialization
+    if (!symTable.checkInitialized(name, line)) {
+        SymbolEntry* e = symTable.lookup(name);
+        if (e) { // declared but not initialized
+            SemanticError err;
+            err.kind       = ErrorKind::UNINITIALIZED_USE;
+            err.variable   = name;
+            err.line       = line;
+            err.column     = col;
+            err.suggestion = "Initialize variable before use (e.g., " +
+                             e->type + " " + name + " = 0;)";
+            reporter.report(err);
+        }
+    }
+}
+
+// ----------------------------------------------------------------
+//  Process a dereference  *<id>
+// ----------------------------------------------------------------
+void SemanticAnalyzer::processDereference() {
+    // cur() is MULTIPLY at entry
+    advance(); // consume *
+
+    if (!at(TokenType::IDENTIFIER)) return;
+
+    std::string name = cur().value;
+    int         line = cur().line;
+    int         col  = cur().column;
+    advance();
+
+    SymbolEntry* e = symTable.lookup(name);
+    if (!e || !e->isPointer) return;
+
+    // System 1 – pointer itself uninitialized?
+    if (e->initState == InitState::UNINITIALIZED) {
+        SemanticError err;
+        err.kind       = ErrorKind::UNINITIALIZED_USE;
+        err.variable   = name;
+        err.line       = line;
+        err.column     = col;
+        err.suggestion = "Initialize pointer before dereferencing (e.g., " +
+                         e->type + " " + name + " = nullptr;)";
+        reporter.report(err);
+        return; // no need to also report null deref
+    }
+
+    // System 2 – null / unknown state?
+    if (symTable.checkNullDereference(name)) {
+        ErrorKind kind = (e->nullState == NullState::NULL_PTR)
+                             ? ErrorKind::NULL_DEREF
+                             : ErrorKind::MAYBE_NULL_DEREF;
+        SemanticError err;
+        err.kind     = kind;
+        err.variable = name;
+        err.line     = line;
+        err.column   = col;
+        if (kind == ErrorKind::NULL_DEREF) {
+            err.suggestion = "Check that '" + name +
+                             "' is not null before dereferencing. "
+                             "Consider: if (" + name + " != nullptr) { ... }";
+        } else {
+            err.suggestion = "Ensure '" + name +
+                             "' is assigned a valid address before use. "
+                             "Consider adding a null check.";
+        }
+        reporter.report(err);
+    }
+}
+
+// ----------------------------------------------------------------
+//  Process a declaration statement
+//  Pattern: <type> [*] <id> [ = <expr> ] [;]
+// ----------------------------------------------------------------
+void SemanticAnalyzer::processDeclaration() {
+    std::string typeName = collectType();
+    if (typeName.empty()) { skipToStatementEnd(); return; }
+
+    // identifier
+    if (!at(TokenType::IDENTIFIER)) { skipToStatementEnd(); return; }
+    std::string varName = cur().value;
+    int         declLine = cur().line;
+    int         declCol  = cur().column;
+    advance();
+
+    symTable.declare(varName, typeName, declLine, declCol);
+
+    // optional initializer
+    if (match(TokenType::ASSIGN)) {
+        // Determine null/non-null for System 2 from the first RHS token
+        processAssignment(varName, declLine, declCol);
+
+        // Scan the RHS expression for identifier uses (System 1 check)
+        int depth = 0;
+        while (!atEnd()) {
+            if (at(TokenType::LEFT_PAREN) || at(TokenType::LEFT_BRACE))  depth++;
+            if (at(TokenType::RIGHT_PAREN)|| at(TokenType::RIGHT_BRACE)) { if (depth == 0) break; depth--; }
+            if ((at(TokenType::SEMICOLON) || at(TokenType::NEWLINE)) && depth == 0) break;
+
+            // Check any identifiers on the RHS (but not function-call names)
+            if (at(TokenType::IDENTIFIER)) {
+                std::string rhsName = cur().value;
+                int rhsLine = cur().line, rhsCol = cur().column;
+                advance();
+                // If not immediately followed by '(' (function call), check init
+                if (!at(TokenType::LEFT_PAREN)) {
+                    processUse(rhsName, rhsLine, rhsCol);
+                }
+                continue;
+            }
+            // Handle dereference on RHS
+            if (at(TokenType::MULTIPLY) && peek().type == TokenType::IDENTIFIER) {
+                processDereference();
+                continue;
+            }
+            advance();
+        }
+    }
+
+    match(TokenType::SEMICOLON);
+    match(TokenType::NEWLINE);
+}
+
+// ----------------------------------------------------------------
+//  Main analysis loop
+// ----------------------------------------------------------------
+bool SemanticAnalyzer::analyze() {
+    while (!atEnd()) {
+        // Skip preprocessor lines, newlines, access modifiers
+        if (at(TokenType::NEWLINE)   ||
+            at(TokenType::SEMICOLON) ||
+            at(TokenType::PUBLIC)    ||
+            at(TokenType::PRIVATE)   ||
+            at(TokenType::PROTECTED) ||
+            at(TokenType::INCLUDE)   ||
+            at(TokenType::DEFINE)    ||
+            at(TokenType::IFNDEF)    ||
+            at(TokenType::ENDIF)) {
+            advance(); continue;
+        }
+
+        // Scope management
+        if (at(TokenType::LEFT_BRACE)) {
+            symTable.pushScope();
+            advance(); continue;
+        }
+        if (at(TokenType::RIGHT_BRACE)) {
+            symTable.popScope();
+            advance(); continue;
+        }
+
+        // ---- Dereference: unary *  ----
+        // Distinguish from multiply: unary * follows operator, (, or start
+        if (at(TokenType::MULTIPLY)) {
+            // Peek back: if previous meaningful token was an identifier or )
+            // this is multiply, not dereference. Simplistic heuristic:
+            // if next token is IDENTIFIER, treat as dereference.
+            if (peek().type == TokenType::IDENTIFIER) {
+                processDereference();
+                continue;
+            }
+            advance(); continue;
+        }
+
+        // ---- Declaration: type keyword or IDENTIFIER followed by IDENTIFIER ----
+        if (isTypeKeyword(cur().type)) {
+            // Save position – if collectType leaves us at IDENTIFIER, it's a decl
+            size_t saved = pos;
+            std::string t = collectType();
+            if (at(TokenType::IDENTIFIER)) {
+                // It's a declaration (possibly a function – check for '(')
+                if (peek().type != TokenType::LEFT_PAREN) {
+                    // Rewind and let processDeclaration handle it cleanly
+                    pos = saved;
+                    processDeclaration();
+                    continue;
+                }
+                // Function declaration – skip body
+                pos = saved;
+                skipToStatementEnd();
+                continue;
+            }
+            // Not a decl after all – restore and continue
+            pos = saved;
+            advance();
+            continue;
+        }
+
+        // ---- IDENTIFIER: assignment or use ----
+        if (at(TokenType::IDENTIFIER)) {
+            std::string name = cur().value;
+            int         line = cur().line;
+            int         col  = cur().column;
+            advance();
+
+            if (match(TokenType::ASSIGN)) {
+                // Assignment: mark initialized / null state from first token
+                processAssignment(name, line, col);
+                // Scan RHS for identifier uses
+                int depth = 0;
+                while (!atEnd()) {
+                    if (at(TokenType::LEFT_PAREN)||at(TokenType::LEFT_BRACE)) depth++;
+                    if (at(TokenType::RIGHT_PAREN)||at(TokenType::RIGHT_BRACE)) { if(depth==0) break; depth--; }
+                    if ((at(TokenType::SEMICOLON)||at(TokenType::NEWLINE))&&depth==0) break;
+                    if (at(TokenType::IDENTIFIER)) {
+                        std::string rn=cur().value; int rl=cur().line,rc=cur().column; advance();
+                        if (!at(TokenType::LEFT_PAREN)) processUse(rn,rl,rc);
+                        continue;
+                    }
+                    if (at(TokenType::MULTIPLY)&&peek().type==TokenType::IDENTIFIER) { processDereference(); continue; }
+                    advance();
+                }
+                match(TokenType::SEMICOLON); match(TokenType::NEWLINE);
+            } else {
+                // Use
+                processUse(name, line, col);
+            }
+            continue;
+        }
+
+        // ---- LET declaration ----
+        if (at(TokenType::LET)) {
+            advance();
+            if (at(TokenType::IDENTIFIER)) {
+                std::string name = cur().value;
+                int line = cur().line, col = cur().column;
+                advance();
+                symTable.declare(name, "auto", line, col);
+                if (match(TokenType::ASSIGN)) {
+                    processAssignment(name, line, col);
+                }
+                skipToStatementEnd();
+            }
+            continue;
+        }
+
+        advance(); // consume anything else
+    }
+
+    return !reporter.hasErrors();
+}
