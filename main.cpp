@@ -51,6 +51,8 @@ static void runPipeline(const std::string& source,
                         const std::string& label,
                         bool showTokens  = false,
                         bool showSymbols = false) {
+    (void)showTokens;
+    (void)showSymbols;
 
     std::cout << "\n------------------------------------------\n";
     std::cout << "Analyzing: " << label << "\n";
@@ -62,26 +64,38 @@ static void runPipeline(const std::string& source,
     Lexer lexer(source);
     std::vector<Token> tokens = lexer.tokenize();
 
-    if (showTokens) {
-        std::cout << "\n[TOKENS]\n";
-        int idx = 1;
-        for (const auto& tok : tokens) {
-            if (tok.type != TokenType::END_OF_FILE)
-                std::cout << tok.getDetailedFormat(idx++) << "\n";
+    std::cout << "\n[LEXICAL ANALYZER PHASE]\n";
+    std::cout << "Token stream:\n";
+    int idx = 1;
+    for (const auto& tok : tokens) {
+        if (tok.type != TokenType::END_OF_FILE) {
+            std::cout << tok.getDetailedFormat(idx++) << "\n";
         }
     }
 
     // ---- Phase 2: Syntax Analysis (Parser) ----
+    std::cout << "\n[SYNTAX ANALYZER PHASE]\n";
     Parser parser(tokens);
     auto ast = parser.parse();
+    (void)ast;
 
     if (parser.hasErrors()) {
-        std::cout << "\n[PARSE ERRORS]\n";
-        for (const auto& e : parser.getErrors())
+        std::cout << "Syntax issues found:\n";
+        for (const auto& e : parser.getErrors()) {
             std::cout << "  " << e << "\n";
+        }
+        std::cout << "\n[SYNTAX SUMMARY]\n";
+        std::cout << "SYNTAX STATUS: INVALID\n";
+        std::cout << "TOTAL SYNTAX ISSUES: " << parser.getErrors().size() << "\n";
+    } else {
+        std::cout << "Syntax analysis completed successfully.\n";
+        std::cout << "\n[SYNTAX SUMMARY]\n";
+        std::cout << "SYNTAX STATUS: VALID\n";
+        std::cout << "TOTAL SYNTAX ISSUES: 0\n";
     }
 
     // ---- Phase 3: Semantic Analysis (Safety Systems) ----
+    std::cout << "\n[SEMANTIC ANALYZER PHASE]\n";
     ErrorReporter reporter;
     SemanticAnalyzer analyzer(tokens, reporter, label);  // Pass filename as label
     bool safe = analyzer.analyze();

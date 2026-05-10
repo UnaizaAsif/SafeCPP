@@ -79,6 +79,7 @@ std::shared_ptr<Program> Parser::parse() { return parseProgram(); }
 std::shared_ptr<Program> Parser::parseProgram() {
     auto program = std::make_shared<Program>();
     while (currentToken().type != TokenType::END_OF_FILE) {
+        size_t beforeLoopPos = position;
         while (match(TokenType::NEWLINE) || match(TokenType::STMT_END)) {}
         if (currentToken().type == TokenType::END_OF_FILE) break;
         try {
@@ -91,6 +92,15 @@ std::shared_ptr<Program> Parser::parseProgram() {
             auto decl = parseDeclaration();
             if (decl) program->declarations.push_back(decl);
         } catch (const std::exception&) { synchronize(); }
+
+        // Safety net: never allow non-advancing loops on malformed input.
+        if (position == beforeLoopPos && currentToken().type != TokenType::END_OF_FILE) {
+            errors.push_back("Parse recovery warning at line " +
+                             std::to_string(currentToken().line) + ", column " +
+                             std::to_string(currentToken().column) +
+                             ": forced token advance to avoid parser stall.");
+            advance();
+        }
     }
     return program;
 }
@@ -239,13 +249,35 @@ std::shared_ptr<ASTNode> Parser::parseFunctionDecl() {
         while (currentToken().type != TokenType::LEFT_BRACE &&
                currentToken().type != TokenType::END_OF_FILE) advance();
     if (match(TokenType::LEFT_BRACE)) {
-        int d=1;
-        while (d>0 && currentToken().type != TokenType::END_OF_FILE) {
-            if (currentToken().type==TokenType::LEFT_BRACE)  d++;
-            if (currentToken().type==TokenType::RIGHT_BRACE) d--;
-            advance();
+        // Parse statements inside function body so syntax errors are reported
+        // with accurate line/column instead of silently skipping the block.
+        while (currentToken().type != TokenType::RIGHT_BRACE &&
+               currentToken().type != TokenType::END_OF_FILE) {
+            size_t beforeLoopPos = position;
+            while (match(TokenType::NEWLINE) || match(TokenType::STMT_END)) {}
+            if (currentToken().type == TokenType::RIGHT_BRACE ||
+                currentToken().type == TokenType::END_OF_FILE) {
+                break;
+            }
+            try {
+                parseStatement();
+            } catch (const std::exception&) {
+                synchronize();
+            }
+            if (position == beforeLoopPos && currentToken().type != TokenType::END_OF_FILE) {
+                errors.push_back("Parse recovery warning at line " +
+                                 std::to_string(currentToken().line) + ", column " +
+                                 std::to_string(currentToken().column) +
+                                 ": forced token advance in function body to avoid parser stall.");
+                advance();
+            }
         }
-    } else { match(TokenType::SEMICOLON, TokenType::NEWLINE); }
+        expect(TokenType::RIGHT_BRACE);
+    } else {
+        if (!matchStatementEnd()) {
+            error("Expected function body or statement terminator after function declaration");
+        }
+    }
     return func;
 }
 
@@ -293,7 +325,15 @@ std::shared_ptr<ASTNode> Parser::parseVariableDecl() {
     if (match(TokenType::ASSIGN)) { vd->initializer = parseExpression(); }
     else if (match(TokenType::LEFT_BRACE)) { int d=1; while (d>0 && currentToken().type!=TokenType::END_OF_FILE) { if (currentToken().type==TokenType::LEFT_BRACE) d++; if (currentToken().type==TokenType::RIGHT_BRACE) d--; advance(); } }
     else if (match(TokenType::LEFT_PAREN)) { int d=1; while (d>0 && currentToken().type!=TokenType::END_OF_FILE) { if (currentToken().type==TokenType::LEFT_PAREN) d++; if (currentToken().type==TokenType::RIGHT_PAREN) d--; advance(); } }
-    matchStatementEnd();
+
+    // Reject malformed declarations such as: int b,10;
+    if (currentToken().type == TokenType::COMMA) {
+        error("Invalid declarator after ',' in variable declaration");
+    }
+
+    if (!matchStatementEnd()) {
+        error("Expected statement terminator ';' or newline after variable declaration");
+    }
     return vd;
 }
 
@@ -314,6 +354,25 @@ std::shared_ptr<ASTNode> Parser::parseIncludeStmt() { return std::make_shared<St
 
 std::shared_ptr<ASTNode> Parser::parseStatement() {
     while (match(TokenType::NEWLINE) || match(TokenType::STMT_END)) {}
+
+    // Allow declarations inside blocks/functions.
+    if (currentToken().type == TokenType::LET ||
+        currentToken().type == TokenType::INT ||
+        currentToken().type == TokenType::FLOAT_KW ||
+        currentToken().type == TokenType::DOUBLE ||
+        currentToken().type == TokenType::CHAR ||
+        currentToken().type == TokenType::BOOL ||
+        currentToken().type == TokenType::VOID ||
+        currentToken().type == TokenType::AUTO ||
+        currentToken().type == TokenType::SIGNED ||
+        currentToken().type == TokenType::UNSIGNED ||
+        currentToken().type == TokenType::SHORT ||
+        currentToken().type == TokenType::LONG ||
+        currentToken().type == TokenType::CONST ||
+        currentToken().type == TokenType::STATIC) {
+        return parseDeclaration();
+    }
+
     switch (currentToken().type) {
         case TokenType::LEFT_BRACE: return parseBlock();
         case TokenType::IF:         return parseIfStatement();
@@ -332,9 +391,17 @@ std::shared_ptr<ASTNode> Parser::parseBlock() {
     expect(TokenType::LEFT_BRACE);
     auto blk = std::make_shared<Statement>(); blk->line = currentToken().line;
     while (currentToken().type != TokenType::RIGHT_BRACE && currentToken().type != TokenType::END_OF_FILE) {
+        size_t beforeLoopPos = position;
         while (match(TokenType::NEWLINE)) {}
         if (currentToken().type == TokenType::RIGHT_BRACE) break;
         parseStatement();
+        if (position == beforeLoopPos && currentToken().type != TokenType::END_OF_FILE) {
+            errors.push_back("Parse recovery warning at line " +
+                             std::to_string(currentToken().line) + ", column " +
+                             std::to_string(currentToken().column) +
+                             ": forced token advance inside block to avoid parser stall.");
+            advance();
+        }
     }
     expect(TokenType::RIGHT_BRACE);
     return blk;
@@ -409,7 +476,9 @@ std::shared_ptr<ASTNode> Parser::parseGotoStatement() {
 
 std::shared_ptr<ASTNode> Parser::parseExpressionStatement() {
     auto expr = parseExpression();
-    matchStatementEnd();
+    if (!matchStatementEnd()) {
+        error("Expected statement terminator ';' or newline after expression");
+    }
     return std::make_shared<Statement>();
 }
 
