@@ -79,7 +79,7 @@ std::shared_ptr<Program> Parser::parse() { return parseProgram(); }
 std::shared_ptr<Program> Parser::parseProgram() {
     auto program = std::make_shared<Program>();
     while (currentToken().type != TokenType::END_OF_FILE) {
-        while (match(TokenType::NEWLINE)) {}
+        while (match(TokenType::NEWLINE) || match(TokenType::STMT_END)) {}
         if (currentToken().type == TokenType::END_OF_FILE) break;
         try {
             if (currentToken().type == TokenType::INCLUDE ||
@@ -103,7 +103,7 @@ std::shared_ptr<ASTNode> Parser::skipPreprocessor() {
 }
 
 std::shared_ptr<ASTNode> Parser::parseDeclaration() {
-    while (match(TokenType::NEWLINE)) {}
+    while (match(TokenType::NEWLINE) || match(TokenType::STMT_END)) {}
     if (currentToken().type == TokenType::CLASS || currentToken().type == TokenType::STRUCT)
         return parseClassDecl();
     if (currentToken().type == TokenType::NAMESPACE)
@@ -287,13 +287,13 @@ std::shared_ptr<ASTNode> Parser::parseVariableDecl() {
         }
         while (currentToken().type==TokenType::MULTIPLY ||
                currentToken().type==TokenType::AMPERSAND) { vd->type += currentToken().value; advance(); }
-    } else { skipToStatementEnd: while (!isStatementEnd() && currentToken().type!=TokenType::END_OF_FILE) advance(); match(TokenType::SEMICOLON,TokenType::NEWLINE); return vd; }
+    } else { while (!isStatementEnd() && currentToken().type!=TokenType::END_OF_FILE) advance(); matchStatementEnd(); return vd; }
     if (currentToken().type==TokenType::IDENTIFIER) { vd->name=currentToken().value; advance(); }
-    else { while (!isStatementEnd() && currentToken().type!=TokenType::END_OF_FILE) advance(); match(TokenType::SEMICOLON,TokenType::NEWLINE); return vd; }
+    else { while (!isStatementEnd() && currentToken().type!=TokenType::END_OF_FILE) advance(); matchStatementEnd(); return vd; }
     if (match(TokenType::ASSIGN)) { vd->initializer = parseExpression(); }
     else if (match(TokenType::LEFT_BRACE)) { int d=1; while (d>0 && currentToken().type!=TokenType::END_OF_FILE) { if (currentToken().type==TokenType::LEFT_BRACE) d++; if (currentToken().type==TokenType::RIGHT_BRACE) d--; advance(); } }
     else if (match(TokenType::LEFT_PAREN)) { int d=1; while (d>0 && currentToken().type!=TokenType::END_OF_FILE) { if (currentToken().type==TokenType::LEFT_PAREN) d++; if (currentToken().type==TokenType::RIGHT_PAREN) d--; advance(); } }
-    match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    matchStatementEnd();
     return vd;
 }
 
@@ -306,14 +306,14 @@ std::shared_ptr<ASTNode> Parser::parseLetDecl() {
     expect(TokenType::ASSIGN);
     ld->initializer = parseExpression();
     ld->type = "auto";
-    match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    matchStatementEnd();  // System 6: Handle STMT_END, SEMICOLON, or NEWLINE
     return ld;
 }
 
 std::shared_ptr<ASTNode> Parser::parseIncludeStmt() { return std::make_shared<Statement>(); }
 
 std::shared_ptr<ASTNode> Parser::parseStatement() {
-    while (match(TokenType::NEWLINE)) {}
+    while (match(TokenType::NEWLINE) || match(TokenType::STMT_END)) {}
     switch (currentToken().type) {
         case TokenType::LEFT_BRACE: return parseBlock();
         case TokenType::IF:         return parseIfStatement();
@@ -322,8 +322,8 @@ std::shared_ptr<ASTNode> Parser::parseStatement() {
         case TokenType::SWITCH:     return parseSwitchStatement();
         case TokenType::RETURN:     return parseReturnStatement();
         case TokenType::GOTO:       return parseGotoStatement();
-        case TokenType::BREAK:      advance(); match(TokenType::SEMICOLON,TokenType::NEWLINE); return std::make_shared<Statement>();
-        case TokenType::CONTINUE:   advance(); match(TokenType::SEMICOLON,TokenType::NEWLINE); return std::make_shared<Statement>();
+        case TokenType::BREAK:      advance(); matchStatementEnd(); return std::make_shared<Statement>();
+        case TokenType::CONTINUE:   advance(); matchStatementEnd(); return std::make_shared<Statement>();
         default: return parseExpressionStatement();
     }
 }
@@ -368,7 +368,7 @@ std::shared_ptr<ASTNode> Parser::parseForStatement() {
 std::shared_ptr<ASTNode> Parser::parseReturnStatement() {
     expect(TokenType::RETURN);
     if (!isStatementEnd()) parseExpression();
-    match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    matchStatementEnd();
     return std::make_shared<Statement>();
 }
 
@@ -403,13 +403,13 @@ std::shared_ptr<ASTNode> Parser::parseSwitchStatement() {
 std::shared_ptr<ASTNode> Parser::parseGotoStatement() {
     expect(TokenType::GOTO);
     if (currentToken().type != TokenType::IDENTIFIER) error("Expected label after 'goto'");
-    advance(); match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    advance(); matchStatementEnd();
     return std::make_shared<Statement>();
 }
 
 std::shared_ptr<ASTNode> Parser::parseExpressionStatement() {
     auto expr = parseExpression();
-    match(TokenType::SEMICOLON, TokenType::NEWLINE);
+    matchStatementEnd();
     return std::make_shared<Statement>();
 }
 
@@ -486,6 +486,7 @@ std::shared_ptr<ASTNode> Parser::parsePostfix() {
 std::shared_ptr<ASTNode> Parser::parsePrimary() {
     if (currentToken().type==TokenType::IDENTIFIER||currentToken().type==TokenType::INTEGER||
         currentToken().type==TokenType::FLOAT||currentToken().type==TokenType::STRING||
+        currentToken().type==TokenType::CHAR_LITERAL||
         currentToken().type==TokenType::TRUE_KW||currentToken().type==TokenType::FALSE_KW||
         currentToken().type==TokenType::COUT||currentToken().type==TokenType::CIN||
         currentToken().type==TokenType::THIS) { advance(); return std::make_shared<Expression>(); }

@@ -70,6 +70,9 @@ Token Lexer::readString() {
         } else { str += currentChar(); advance(); }
     }
     if (currentChar() == quote) advance();
+    if (quote == '\'') {
+        return Token(TokenType::CHAR_LITERAL, str, startLine, startColumn);
+    }
     return Token(TokenType::STRING, str, startLine, startColumn);
 }
 
@@ -230,7 +233,10 @@ bool Lexer::canEndStatement(const Token& token) {
     return token.type == TokenType::IDENTIFIER ||
            token.type == TokenType::INTEGER ||
            token.type == TokenType::FLOAT ||
+           token.type == TokenType::CHAR_LITERAL ||
            token.type == TokenType::STRING ||
+           token.type == TokenType::TRUE_KW ||
+           token.type == TokenType::FALSE_KW ||
            token.type == TokenType::RIGHT_PAREN ||
            token.type == TokenType::RIGHT_BRACE ||
            token.type == TokenType::RIGHT_BRACKET ||
@@ -262,4 +268,75 @@ bool Lexer::isStatementBoundary(const Token& token) {
            token.type == TokenType::STRUCT ||
            token.type == TokenType::RIGHT_BRACE ||
            token.type == TokenType::END_OF_FILE;
+}
+
+// ===== SYSTEM 5: Type Inference from Literal Tokens =====
+TokenType Lexer::inferTypeFromToken(const Token& token) {
+    // Check token value for type suffixes (L, f, ULL, etc.)
+    const std::string& val = token.value;
+    
+    if (token.type == TokenType::INTEGER) {
+        // Check for integer suffixes
+        if (!val.empty()) {
+            // Check for long long (LL or ll)
+            if (val.find("LL") != std::string::npos || val.find("ll") != std::string::npos) {
+                if (val.find("U") != std::string::npos || val.find("u") != std::string::npos) {
+                    return TokenType::TYPE_INFERRED_UNSIGNED_LONG;
+                }
+                return TokenType::TYPE_INFERRED_LONG;
+            }
+            // Check for unsigned (U or u)
+            if (val.find("U") != std::string::npos || val.find("u") != std::string::npos) {
+                return TokenType::TYPE_INFERRED_UNSIGNED_INT;
+            }
+            // Check for long (L or l, but not followed by another L)
+            if ((val.find("L") != std::string::npos || val.find("l") != std::string::npos) &&
+                val.find("LL") == std::string::npos && val.find("ll") == std::string::npos) {
+                return TokenType::TYPE_INFERRED_LONG;
+            }
+        }
+        return TokenType::TYPE_INFERRED_INT;
+    } 
+    else if (token.type == TokenType::FLOAT) {
+        // Check for float suffixes
+        if (!val.empty()) {
+            // Check for float (f or F)
+            if (val.find("f") != std::string::npos || val.find("F") != std::string::npos) {
+                return TokenType::TYPE_INFERRED_FLOAT;
+            }
+            // Check for long double (L or l)
+            if (val.find("L") != std::string::npos || val.find("l") != std::string::npos) {
+                return TokenType::TYPE_INFERRED_DOUBLE;  // Treating long double as double for simplicity
+            }
+        }
+        return TokenType::TYPE_INFERRED_DOUBLE;  // Default for floating point
+    } 
+    else if (token.type == TokenType::STRING) {
+        return TokenType::TYPE_INFERRED_STRING;
+    } 
+    else if (token.type == TokenType::TRUE_KW || token.type == TokenType::FALSE_KW) {
+        return TokenType::TYPE_INFERRED_BOOL;
+    }
+    else if (token.type == TokenType::CHAR_LITERAL) {
+        return TokenType::TYPE_INFERRED_CHAR;
+    }
+    
+    return TokenType::UNKNOWN;
+}
+
+std::string Lexer::getInferredTypeName(TokenType inferredType) {
+    switch (inferredType) {
+        case TokenType::TYPE_INFERRED_INT:              return "int";
+        case TokenType::TYPE_INFERRED_LONG:             return "long";
+        case TokenType::TYPE_INFERRED_UNSIGNED_INT:     return "unsigned int";
+        case TokenType::TYPE_INFERRED_UNSIGNED_LONG:    return "unsigned long long";
+        case TokenType::TYPE_INFERRED_FLOAT:            return "float";
+        case TokenType::TYPE_INFERRED_DOUBLE:           return "double";
+        case TokenType::TYPE_INFERRED_CHAR:             return "char";
+        case TokenType::TYPE_INFERRED_BOOL:             return "bool";
+        case TokenType::TYPE_INFERRED_STRING:           return "string";
+        case TokenType::TYPE_INFERRED_POINTER:          return "pointer";
+        case TokenType::TYPE_INFERRED_ARRAY:            return "array";
+        default:                                        return "unknown";
+    }
 }

@@ -17,7 +17,14 @@ void SymbolTable::pushScope() {
 }
 
 void SymbolTable::popScope() {
-    if (!scopes.empty()) scopes.pop_back();
+    if (scopes.empty()) return;
+
+    // Preserve scope entries so end-of-analysis leak reporting still sees
+    // allocations from scopes that were already popped.
+    for (const auto& entry : scopes.back()) {
+        finalizedEntries.push_back(entry.second);
+    }
+    scopes.pop_back();
 }
 
 // -------------------------------------------------------
@@ -137,31 +144,25 @@ bool SymbolTable::markFreed(const std::string& name, int line) {
 std::vector<SymbolTable::MemoryLeak> SymbolTable::getMemoryLeaks() const {
     std::vector<MemoryLeak> leaks;
 
-    // Check all scopes
+    auto collectLeaks = [&leaks](const SymbolEntry& e) {
+        if (!e.allocated || e.freed) return;
+        MemoryLeak leak;
+        leak.varName = e.name;
+        leak.allocLine = e.allocLine;
+        leak.errorType = e.allocInLoop ? 1 : 0;
+        leaks.push_back(leak);
+    };
+
+    // Check active scopes
     for (const auto& scope : scopes) {
         for (const auto& entry : scope) {
-            const SymbolEntry& e = entry.second;
-
-            // Only check variables that were allocated
-            if (!e.allocated) continue;
-
-            // If freed, no leak
-            if (e.freed) continue;
-
-            // Memory leak found
-            MemoryLeak leak;
-            leak.varName = e.name;
-            leak.allocLine = e.allocLine;
-            
-            // Determine leak type
-            if (e.allocInLoop) {
-                leak.errorType = 1; // LOOP_LEAK_WARNING
-            } else {
-                leak.errorType = 0; // MEMORY_LEAK_WARNING
-            }
-
-            leaks.push_back(leak);
+            collectLeaks(entry.second);
         }
+    }
+
+    // Check finalized symbols from popped scopes
+    for (const auto& e : finalizedEntries) {
+        collectLeaks(e);
     }
 
     return leaks;

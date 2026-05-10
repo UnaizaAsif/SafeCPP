@@ -25,6 +25,10 @@ private:
     // System 6: Statement end detection
     bool isStatementBoundary(const Token& token);
     bool canEndStatement(const Token& token);
+    
+    // System 5: Type inference from value token
+    TokenType inferTypeFromToken(const Token& token);
+    std::string getInferredTypeName(TokenType inferredType);
 
 public:
     Lexer(const std::string& source);

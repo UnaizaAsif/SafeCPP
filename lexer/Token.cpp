@@ -10,6 +10,7 @@ std::string Token::getTokenTypeString() const {
         case TokenType::INTEGER:    return "INTEGER";
         case TokenType::FLOAT:      return "FLOAT";
         case TokenType::STRING:     return "STRING";
+        case TokenType::CHAR_LITERAL:return "CHAR_LITERAL";
         case TokenType::IDENTIFIER: return "IDENTIFIER";
         case TokenType::INT:        return "INT";
         case TokenType::FLOAT_KW:   return "FLOAT_KW";
@@ -65,6 +66,17 @@ std::string Token::getTokenTypeString() const {
         case TokenType::LET:        return "LET";
         case TokenType::NULLABLE:   return "NULLABLE";
         case TokenType::NONNULL:    return "NONNULL";
+        case TokenType::TYPE_INFERRED_INT:              return "TYPE_INFERRED_INT";
+        case TokenType::TYPE_INFERRED_LONG:             return "TYPE_INFERRED_LONG";
+        case TokenType::TYPE_INFERRED_UNSIGNED_INT:     return "TYPE_INFERRED_UNSIGNED_INT";
+        case TokenType::TYPE_INFERRED_UNSIGNED_LONG:    return "TYPE_INFERRED_UNSIGNED_LONG";
+        case TokenType::TYPE_INFERRED_FLOAT:            return "TYPE_INFERRED_FLOAT";
+        case TokenType::TYPE_INFERRED_DOUBLE:           return "TYPE_INFERRED_DOUBLE";
+        case TokenType::TYPE_INFERRED_CHAR:             return "TYPE_INFERRED_CHAR";
+        case TokenType::TYPE_INFERRED_BOOL:             return "TYPE_INFERRED_BOOL";
+        case TokenType::TYPE_INFERRED_STRING:           return "TYPE_INFERRED_STRING";
+        case TokenType::TYPE_INFERRED_POINTER:          return "TYPE_INFERRED_POINTER";
+        case TokenType::TYPE_INFERRED_ARRAY:            return "TYPE_INFERRED_ARRAY";
         case TokenType::NEW:        return "NEW";
         case TokenType::DELETE:     return "DELETE";
         case TokenType::NULLPTR:    return "NULLPTR";

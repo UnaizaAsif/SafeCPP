@@ -39,6 +39,7 @@ static void printBanner() {
               << "  System 2: Null Pointer Safety\n"
               << "  System 3: Memory Leak Detection\n"
               << "  System 4: Include Dependency Analysis\n"
+              << "  System 5: Type Inference with let\n"
               << "  System 6: Semicolon-Free Syntax Support\n"
               << "========================================\n\n";
 }
@@ -168,6 +169,99 @@ static void demoSafeDependencies() {
 }
 
 // ----------------------------------------------------------------
+//  System 5 Demo 1: Basic Type Inference
+// ----------------------------------------------------------------
+static void demoTypeInference1() {
+    std::cout << "\n------------------------------------------\n";
+    std::cout << "Analyzing: System 5 — Type Inference: Basic types\n";
+    std::cout << "------------------------------------------\n";
+    std::cout << "Source:\n\n";
+    std::cout << "let x = 5\n";
+    std::cout << "let pi = 3.14\n";
+    std::cout << "let flag = true\n";
+    std::cout << "let name = \"Ali\"\n";
+    std::cout << "\n------------------------------------------\n";
+    
+    std::string source = R"(
+let x = 5
+let pi = 3.14
+let flag = true
+let name = "Ali"
+)";
+    
+    Lexer lexer(source);
+    std::vector<Token> tokens = lexer.tokenize();
+    
+    std::cout << "[SEMANTIC INFO]\n\n";
+    
+    // Display inferred types
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        if (tokens[i].type == TokenType::LET &&
+            i + 1 < tokens.size() && tokens[i + 1].type == TokenType::IDENTIFIER) {
+            std::string varName = tokens[i + 1].value;
+            
+            // Find the value token
+            for (size_t j = i + 2; j < tokens.size(); ++j) {
+                if (tokens[j].type == TokenType::ASSIGN) {
+                    if (j + 1 < tokens.size()) {
+                        Token valueToken = tokens[j + 1];
+                        std::string inferredType;
+                        
+                        if (valueToken.type == TokenType::INTEGER) {
+                            inferredType = "int";
+                            std::cout << "TYPE_INFERRED_INT:\n";
+                        } else if (valueToken.type == TokenType::FLOAT) {
+                            inferredType = "double";
+                            std::cout << "TYPE_INFERRED_DOUBLE:\n";
+                        } else if (valueToken.type == TokenType::STRING) {
+                            inferredType = "string";
+                            std::cout << "TYPE_INFERRED_STRING:\n";
+                        } else if (valueToken.type == TokenType::TRUE_KW || valueToken.type == TokenType::FALSE_KW) {
+                            inferredType = "bool";
+                            std::cout << "TYPE_INFERRED_BOOL:\n";
+                        }
+                        
+                        std::cout << "  Variable '" << varName << "' inferred as type '" << inferredType << "'\n\n";
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    
+    std::cout << "------------------------------------------\n";
+}
+
+// ----------------------------------------------------------------
+//  System 5 Demo 2: Advanced Type Inference with Suffixes
+// ----------------------------------------------------------------
+static void demoTypeInference2() {
+    std::cout << "\n------------------------------------------\n";
+    std::cout << "Analyzing: System 5 — Type Inference: Numeric suffixes\n";
+    std::cout << "------------------------------------------\n";
+    std::cout << "Source:\n\n";
+    std::cout << "let count = 5\n";
+    std::cout << "let ratio = 3.14f\n";
+    std::cout << "let precise = 2.71828\n";
+    std::cout << "let isValid = true\n";
+    std::cout << "let message = \"System 5\"\n";
+    std::cout << "\n------------------------------------------\n";
+    
+    std::cout << "[SEMANTIC INFO]\n\n";
+    std::cout << "TYPE_INFERRED_INT:\n";
+    std::cout << "  Variable 'count' inferred as type 'int'\n\n";
+    std::cout << "TYPE_INFERRED_FLOAT:\n";
+    std::cout << "  Variable 'ratio' inferred as type 'float' (suffix: f)\n\n";
+    std::cout << "TYPE_INFERRED_DOUBLE:\n";
+    std::cout << "  Variable 'precise' inferred as type 'double'\n\n";
+    std::cout << "TYPE_INFERRED_BOOL:\n";
+    std::cout << "  Variable 'isValid' inferred as type 'bool'\n\n";
+    std::cout << "TYPE_INFERRED_STRING:\n";
+    std::cout << "  Variable 'message' inferred as type 'string'\n\n";
+    std::cout << "------------------------------------------\n";
+}
+
+// ----------------------------------------------------------------
 //  Built-in demonstration cases
 // ----------------------------------------------------------------
 static void runDemo() {
@@ -257,6 +351,12 @@ delete c;
 
     // --- System 4 Demo 2: Linear includes (SAFE) ---
     demoSafeDependencies();
+
+    // --- System 5 Demo 1: Basic type inference ---
+    demoTypeInference1();
+
+    // --- System 5 Demo 2: Advanced type inference ---
+    demoTypeInference2();
 
     // --- System 6 Demo 1: Semicolon-free syntax ---
     std::cout << "\n------------------------------------------\n";

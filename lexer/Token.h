@@ -9,6 +9,7 @@ enum class TokenType {
     INTEGER,
     FLOAT,
     STRING,
+    CHAR_LITERAL,
     IDENTIFIER,
 
     // ========== STANDARD KEYWORDS ==========
@@ -84,6 +85,19 @@ enum class TokenType {
     LET,
     NULLABLE,
     NONNULL,
+
+    // ========== SYSTEM 5: TYPE INFERENCE MARKERS ==========
+    TYPE_INFERRED_INT,
+    TYPE_INFERRED_LONG,
+    TYPE_INFERRED_UNSIGNED_INT,
+    TYPE_INFERRED_UNSIGNED_LONG,
+    TYPE_INFERRED_FLOAT,
+    TYPE_INFERRED_DOUBLE,
+    TYPE_INFERRED_CHAR,
+    TYPE_INFERRED_BOOL,
+    TYPE_INFERRED_STRING,
+    TYPE_INFERRED_POINTER,
+    TYPE_INFERRED_ARRAY,
 
     // ========== MEMORY/TYPE KEYWORDS ==========
     NEW,

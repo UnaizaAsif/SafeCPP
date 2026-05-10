@@ -52,9 +52,9 @@ private:
     IncludeDependencyAnalyzer dependencyAnalyzer;
     std::string currentFileName;  // track which file is being analyzed
 
-    // ---- Loop-aware tracking (disabled - architectural limitations) ----
-    // bool insideLoop = false;  
-    // int loopDepth = 0;
+    // ---- Loop-aware allocation tracking ----
+    bool insideLoop = false;
+    int loopDepth = 0;
 
     // ---- token navigation ----
     const Token& cur()  const;
@@ -68,6 +68,7 @@ private:
     bool isTypeKeyword(TokenType t) const;
     bool isNullLiteral(TokenType t) const;
     bool isPointerType(const std::string& raw) const;
+    std::string inferTypeFromToken(const Token& tok);
 
     // ---- analysis passes ----
     void processDeclaration();   // handles <type> [*] <id> [= ...] ;

@@ -1,6 +1,10 @@
 #include "SemanticAnalyzer.h"
 #include <iostream>
 #include <set>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <unordered_set>
 
 // ----------------------------------------------------------------
 //  Construction
@@ -68,6 +72,27 @@ bool SemanticAnalyzer::isNullLiteral(TokenType t) const {
 
 bool SemanticAnalyzer::isPointerType(const std::string& raw) const {
     return raw.find('*') != std::string::npos;
+}
+
+// ================================================================
+//  System 5: Infer type from token
+// ================================================================
+std::string SemanticAnalyzer::inferTypeFromToken(const Token& tok) {
+    switch (tok.type) {
+        case TokenType::INTEGER:
+            return "int";
+        case TokenType::FLOAT:
+            return "double";
+        case TokenType::STRING:
+            return "string";
+        case TokenType::CHAR_LITERAL:
+            return "char";
+        case TokenType::TRUE_KW:
+        case TokenType::FALSE_KW:
+            return "bool";
+        default:
+            return "unknown";
+    }
 }
 
 // ----------------------------------------------------------------
@@ -227,29 +252,61 @@ void SemanticAnalyzer::analyzeIncludeDependencies() {
 //  Extract Include Directives
 // ================================================================
 void SemanticAnalyzer::extractIncludeDirectives() {
+    auto trim = [](const std::string& s) {
+        const std::string ws = " \t\r\n";
+        size_t start = s.find_first_not_of(ws);
+        if (start == std::string::npos) return std::string();
+        size_t end = s.find_last_not_of(ws);
+        return s.substr(start, end - start + 1);
+    };
+
+    auto basename = [](const std::string& path) {
+        return std::filesystem::path(path).filename().string();
+    };
+
+    std::unordered_set<std::string> visitedFiles;
+    std::function<void(const std::filesystem::path&)> scanFile =
+        [&](const std::filesystem::path& filePath) {
+            std::string canonicalKey = filePath.lexically_normal().string();
+            if (visitedFiles.count(canonicalKey)) return;
+            visitedFiles.insert(canonicalKey);
+
+            std::ifstream in(filePath);
+            if (!in.is_open()) return;
+
+            std::string sourceName = basename(canonicalKey);
+            std::string line;
+            while (std::getline(in, line)) {
+                std::string t = trim(line);
+                if (t.rfind("#include", 0) != 0) continue;
+
+                size_t q1 = t.find('"');
+                size_t q2 = (q1 == std::string::npos) ? std::string::npos : t.find('"', q1 + 1);
+                if (q1 == std::string::npos || q2 == std::string::npos || q2 <= q1 + 1) continue;
+
+                std::string includeRel = t.substr(q1 + 1, q2 - q1 - 1);
+                std::filesystem::path includePath = filePath.parent_path() / includeRel;
+                includePath = includePath.lexically_normal();
+
+                dependencyAnalyzer.addDependency(sourceName, basename(includePath.string()));
+                scanFile(includePath);
+            }
+        };
+
+    if (!currentFileName.empty()) {
+        std::filesystem::path rootFile(currentFileName);
+        if (std::filesystem::exists(rootFile)) {
+            scanFile(rootFile);
+            return;
+        }
+    }
+
+    // Fallback to token-stream extraction when source file path is unavailable.
     for (size_t i = 0; i < tokens.size(); ++i) {
         const Token& tok = tokens[i];
-        
-        // Look for #include pattern
-        if (tok.type == TokenType::INCLUDE && i + 1 < tokens.size()) {
-            const Token& nextTok = tokens[i + 1];
-            
-            // Handle #include "filename.h"
-            if (nextTok.type == TokenType::STRING) {
-                std::string includedFile = nextTok.value;
-                
-                // Strip quotes if present
-                if (includedFile.length() >= 2 && 
-                    includedFile.front() == '"' && 
-                    includedFile.back() == '"') {
-                    includedFile = includedFile.substr(1, includedFile.length() - 2);
-                }
-                
-                // Add dependency: current file includes this file
-                if (!currentFileName.empty()) {
-                    dependencyAnalyzer.addDependency(currentFileName, includedFile);
-                }
-            }
+        if (tok.type == TokenType::INCLUDE && i + 1 < tokens.size() &&
+            tokens[i + 1].type == TokenType::STRING) {
+            dependencyAnalyzer.addDependency(currentFileName, tokens[i + 1].value);
         }
     }
 }
@@ -293,19 +350,19 @@ void SemanticAnalyzer::processAssignment(const std::string& name,
     } else if (at(TokenType::NEW)) {
         // System 3: Track memory allocation
         // Note: Loop-aware tracking disabled due to token stream issues
-        symTable.markAllocated(name, cur().line, false, 0);
+        symTable.markAllocated(name, cur().line, insideLoop, loopDepth);
         advance(); // consume NEW
         // Skip type
         if (isTypeKeyword(cur().type) || at(TokenType::IDENTIFIER)) {
             advance();
         }
-        // Skip array brackets
-        if (at(TokenType::LEFT_BRACE)) {
+        // Skip array brackets: new int[10]
+        if (at(TokenType::LEFT_BRACKET)) {
             int depth = 1;
             advance();
             while (depth > 0 && !atEnd()) {
-                if (at(TokenType::LEFT_BRACE))  depth++;
-                if (at(TokenType::RIGHT_BRACE)) depth--;
+                if (at(TokenType::LEFT_BRACKET))  depth++;
+                if (at(TokenType::RIGHT_BRACKET)) depth--;
                 advance();
             }
         }
@@ -453,6 +510,15 @@ bool SemanticAnalyzer::analyze() {
     analyzeIncludeDependencies();
     
     while (!atEnd()) {
+        if (at(TokenType::STMT_END)) {
+            System6Info info;
+            info.message = "Implicit statement terminator inserted";
+            info.token = "STMT_END";
+            info.print();
+            advance();
+            continue;
+        }
+
         // Skip preprocessor lines, newlines, access modifiers
         if (at(TokenType::NEWLINE)   ||
             at(TokenType::SEMICOLON) ||
@@ -474,12 +540,113 @@ bool SemanticAnalyzer::analyze() {
         }
         if (at(TokenType::RIGHT_BRACE)) {
             symTable.popScope();
-            if (scopeDepth > 0) scopeDepth--;
-            advance(); continue;
+
+            if (scopeDepth > 0)
+                scopeDepth--;
+
+            if (insideLoop) {
+                loopDepth--;
+
+                if (loopDepth <= 0) {
+                    insideLoop = false;
+                    loopDepth = 0;
+                }
+            }
+
+            advance();
+            continue;
         }
 
-        // ---- Loop detection disabled - just track brace depth for now ----
-        // We'll count braces to detect loop context later
+        // ---- Loop detection for FOR, WHILE ----
+        if (at(TokenType::FOR) ||
+            at(TokenType::WHILE)) {
+
+            insideLoop = true;
+            loopDepth++;
+            advance();
+            continue;
+        }
+
+        // ---- System 5: LET declarations (type inference) ----
+        if (at(TokenType::LET)) {
+            advance(); // consume LET
+
+            if (!at(TokenType::IDENTIFIER)) {
+                advance();
+                continue;
+            }
+
+            std::string name = cur().value;
+            int line = cur().line;
+            int col = cur().column;
+            advance(); // consume identifier
+
+            if (!match(TokenType::ASSIGN)) {
+                SemanticError err;
+                err.kind = ErrorKind::TYPE_INFERENCE_ERROR;
+                err.variable = name;
+                err.line = line;
+                err.column = col;
+                reporter.report(err);
+                continue;
+            }
+
+            Token rhs = cur();
+            std::string inferredType = inferTypeFromToken(rhs);
+
+            if (inferredType == "unknown") {
+                SemanticError err;
+                err.kind = ErrorKind::TYPE_INFERENCE_ERROR;
+                err.variable = name;
+                err.line = line;
+                err.column = col;
+                reporter.report(err);
+            }
+
+            symTable.declare(name, inferredType, line, col);
+            symTable.markInitialized(name, line);
+
+            // Print System 5 type inference info
+            System5Info info;
+            info.variable = name;
+            info.inferredType = inferredType;
+
+            if (inferredType == "int")
+                info.typeToken = "TYPE_INFERRED_INT";
+            else if (inferredType == "float")
+                info.typeToken = "TYPE_INFERRED_FLOAT";
+            else if (inferredType == "double")
+                info.typeToken = "TYPE_INFERRED_DOUBLE";
+            else if (inferredType == "string")
+                info.typeToken = "TYPE_INFERRED_STRING";
+            else if (inferredType == "char")
+                info.typeToken = "TYPE_INFERRED_CHAR";
+            else if (inferredType == "bool")
+                info.typeToken = "TYPE_INFERRED_BOOL";
+            else
+                info.typeToken = "TYPE_INFERRED_UNKNOWN";
+
+            info.print();
+
+            // Process RHS for identifier uses
+            while (!atEnd() &&
+                   !at(TokenType::SEMICOLON) &&
+                   !at(TokenType::NEWLINE) &&
+                   !at(TokenType::STMT_END)) {
+
+                if (at(TokenType::IDENTIFIER)) {
+                    processUse(cur().value, cur().line, cur().column);
+                }
+
+                advance();
+            }
+
+            match(TokenType::SEMICOLON);
+            match(TokenType::NEWLINE);
+            match(TokenType::STMT_END);
+
+            continue;
+        }
 
         // ---- Dereference: unary *  ----
         // Distinguish from multiply: unary * follows operator, (, or start
@@ -546,22 +713,6 @@ bool SemanticAnalyzer::analyze() {
             } else {
                 // Use
                 processUse(name, line, col);
-            }
-            continue;
-        }
-
-        // ---- LET declaration ----
-        if (at(TokenType::LET)) {
-            advance();
-            if (at(TokenType::IDENTIFIER)) {
-                std::string name = cur().value;
-                int line = cur().line, col = cur().column;
-                advance();
-                symTable.declare(name, "auto", line, col);
-                if (match(TokenType::ASSIGN)) {
-                    processAssignment(name, line, col);
-                }
-                skipToStatementEnd();
             }
             continue;
         }

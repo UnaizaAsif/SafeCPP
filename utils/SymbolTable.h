@@ -117,6 +117,7 @@ public:
 private:
     // Each scope is a map from name → entry
     std::vector<std::unordered_map<std::string, SymbolEntry>> scopes;
+    std::vector<SymbolEntry> finalizedEntries;
 
     static bool isPointerType(const std::string& type);
 };
