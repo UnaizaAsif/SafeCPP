@@ -127,12 +127,21 @@ struct System5Info {
 struct System6Info {
     std::string message;  // e.g., "Implicit statement terminator inserted"
     std::string token;    // e.g., "STMT_END"
+    int line = -1;
+    int column = -1;
 
     void print() const {
         std::cout << "\n[SYNTAX INFO]\n";
         std::cout << message << ".\n\n";
         std::cout << "Virtual Token:\n";
         std::cout << token << "\n";
+        if (line > 0) {
+            std::cout << "Location: Line " << line;
+            if (column >= 0) {
+                std::cout << ", Column " << column;
+            }
+            std::cout << "\n";
+        }
     }
 };
 

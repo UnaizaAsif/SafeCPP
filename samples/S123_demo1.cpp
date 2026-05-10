@@ -3,7 +3,9 @@
 // Comprehensive SafeCPP Test File
 // ===============================
 
-int count = 10;
+#include "a.h"
+
+let count = 10
 
 int x;
 printf("%d", x);     // Undefined Behavior (uninitialized variable)
@@ -14,13 +16,14 @@ int* ptr = nullptr;
 int* leak = new int;
 *leak = 100;         // Memory allocated but never deleted
 
-float pi = 3.14;
-string name = "SafeCPP";
+let pi = 3.14
+let name = "SafeCPP"
 
-int y = 20;          // Syntax error: incomplete assignment
+int y =
+                    // Syntax error: incomplete assignment
 
-print(count);
-print(pi);
-print(name);
+print(count)
+print(pi)
+print(name)
 
-return 0
+return 0;

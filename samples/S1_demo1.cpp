@@ -5,7 +5,7 @@ int main() {
 
     int x;
 
-    cout << x;
+    cout << x
 
     return 0;
 }

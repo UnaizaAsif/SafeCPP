@@ -514,6 +514,8 @@ bool SemanticAnalyzer::analyze() {
             System6Info info;
             info.message = "Implicit statement terminator inserted";
             info.token = "STMT_END";
+            info.line = cur().line;
+            info.column = cur().column;
             info.print();
             advance();
             continue;
