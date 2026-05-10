@@ -84,6 +84,7 @@ static void runPipeline(const std::string& source,
         for (const auto& e : parser.getErrors()) {
             std::cout << "  " << e << "\n";
         }
+
         std::cout << "\n[SYNTAX SUMMARY]\n";
         std::cout << "SYNTAX STATUS: INVALID\n";
         std::cout << "TOTAL SYNTAX ISSUES: " << parser.getErrors().size() << "\n";

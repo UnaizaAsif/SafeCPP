@@ -114,6 +114,25 @@ std::shared_ptr<ASTNode> Parser::skipPreprocessor() {
 
 std::shared_ptr<ASTNode> Parser::parseDeclaration() {
     while (match(TokenType::NEWLINE) || match(TokenType::STMT_END)) {}
+    
+    // Allow control-flow statements at top-level (so syntax errors are reported
+    // instead of silently skipping them as "not a declaration").
+    // Even if your target language later disallows these globally, reporting
+    // them as syntax issues is still preferable to "success".
+    switch (currentToken().type) {
+        case TokenType::LEFT_BRACE:
+        case TokenType::IF:
+        case TokenType::WHILE:
+        case TokenType::FOR:
+        case TokenType::SWITCH:
+        case TokenType::RETURN:
+        case TokenType::BREAK:
+        case TokenType::CONTINUE:
+        case TokenType::GOTO:
+            return parseStatement();
+        default:
+            break;
+    }
     if (currentToken().type == TokenType::CLASS || currentToken().type == TokenType::STRUCT)
         return parseClassDecl();
     if (currentToken().type == TokenType::NAMESPACE)
@@ -322,6 +341,24 @@ std::shared_ptr<ASTNode> Parser::parseVariableDecl() {
     } else { while (!isStatementEnd() && currentToken().type!=TokenType::END_OF_FILE) advance(); matchStatementEnd(); return vd; }
     if (currentToken().type==TokenType::IDENTIFIER) { vd->name=currentToken().value; advance(); }
     else { while (!isStatementEnd() && currentToken().type!=TokenType::END_OF_FILE) advance(); matchStatementEnd(); return vd; }
+
+    // Catch common syntax mistakes early with clearer messages:
+    // - int b == 10;  (wrong operator)
+    // - int b != 10;  (nonsensical here)
+    if (currentToken().type == TokenType::EQUAL ||
+        currentToken().type == TokenType::NOT_EQUAL ||
+        currentToken().type == TokenType::LESS_THAN ||
+        currentToken().type == TokenType::GREATER_THAN ||
+        currentToken().type == TokenType::LESS_EQUAL ||
+        currentToken().type == TokenType::GREATER_EQUAL) {
+        std::string got = currentToken().value.empty()
+                              ? currentToken().getTokenTypeString()
+                              : currentToken().value;
+        error("Syntax Error: Unexpected token '" + got +
+              "' after identifier '" + vd->name +
+              "'. Expected '=' for initialization or a statement terminator");
+    }
+
     if (match(TokenType::ASSIGN)) { vd->initializer = parseExpression(); }
     else if (match(TokenType::LEFT_BRACE)) { int d=1; while (d>0 && currentToken().type!=TokenType::END_OF_FILE) { if (currentToken().type==TokenType::LEFT_BRACE) d++; if (currentToken().type==TokenType::RIGHT_BRACE) d--; advance(); } }
     else if (match(TokenType::LEFT_PAREN)) { int d=1; while (d>0 && currentToken().type!=TokenType::END_OF_FILE) { if (currentToken().type==TokenType::LEFT_PAREN) d++; if (currentToken().type==TokenType::RIGHT_PAREN) d--; advance(); } }
@@ -477,6 +514,31 @@ std::shared_ptr<ASTNode> Parser::parseGotoStatement() {
 std::shared_ptr<ASTNode> Parser::parseExpressionStatement() {
     auto expr = parseExpression();
     if (!matchStatementEnd()) {
+        // If another operand starts immediately, it's usually a missing operator (e.g., "10 20")
+        auto isOperandStart = [](TokenType t) {
+            switch (t) {
+                case TokenType::IDENTIFIER:
+                case TokenType::INTEGER:
+                case TokenType::FLOAT:
+                case TokenType::STRING:
+                case TokenType::CHAR_LITERAL:
+                case TokenType::TRUE_KW:
+                case TokenType::FALSE_KW:
+                case TokenType::LEFT_PAREN:
+                case TokenType::NULL_KW:
+                case TokenType::NULLPTR:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+        if (isOperandStart(currentToken().type)) {
+            std::string got = currentToken().value.empty()
+                                  ? currentToken().getTokenTypeString()
+                                  : currentToken().value;
+            error("Syntax Error: Unexpected token '" + got +
+                  "'. Expected an operator (+, -, *, /) or statement terminator");
+        }
         error("Expected statement terminator ';' or newline after expression");
     }
     return std::make_shared<Statement>();
@@ -486,7 +548,42 @@ std::shared_ptr<ASTNode> Parser::parseExpression()  { return parseAssignment(); 
 
 std::shared_ptr<ASTNode> Parser::parseAssignment() {
     auto e = parseLogicalOr();
-    if (match(TokenType::ASSIGN)) parseAssignment();
+    if (match(TokenType::ASSIGN)) {
+        // Improve error quality for cases like: int x = + 5;
+        auto isExpressionStart = [](TokenType t) {
+            switch (t) {
+                case TokenType::IDENTIFIER:
+                case TokenType::INTEGER:
+                case TokenType::FLOAT:
+                case TokenType::STRING:
+                case TokenType::CHAR_LITERAL:
+                case TokenType::TRUE_KW:
+                case TokenType::FALSE_KW:
+                case TokenType::LEFT_PAREN:
+                case TokenType::NULL_KW:
+                case TokenType::NULLPTR:
+                case TokenType::NEW:
+                case TokenType::LOGICAL_NOT:
+                case TokenType::MINUS:
+                case TokenType::MULTIPLY:
+                case TokenType::AMPERSAND:
+                case TokenType::SIZEOF:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+
+        if (!isExpressionStart(currentToken().type)) {
+            std::string got = currentToken().value.empty()
+                                  ? currentToken().getTokenTypeString()
+                                  : currentToken().value;
+            error("Syntax Error: Unexpected token '" + got +
+                  "' after '='. Expected: identifier or number");
+        }
+
+        parseAssignment();
+    }
     return e;
 }
 
@@ -561,6 +658,12 @@ std::shared_ptr<ASTNode> Parser::parsePrimary() {
         currentToken().type==TokenType::THIS) { advance(); return std::make_shared<Expression>(); }
     if (match(TokenType::NULL_KW, TokenType::NULLPTR)) return std::make_shared<Expression>();
     if (match(TokenType::LEFT_PAREN)) { auto e=parseExpression(); expect(TokenType::RIGHT_PAREN); return e; }
+    // Unknown token in expression: report a real syntax error (and allow recovery).
+    std::string got = currentToken().value.empty()
+                          ? currentToken().getTokenTypeString()
+                          : currentToken().value;
+    error("Syntax Error: Unexpected token '" + got +
+          "'. Expected: identifier or number");
     return std::make_shared<Expression>();
 }
 
