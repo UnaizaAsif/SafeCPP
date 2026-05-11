@@ -113,3 +113,17 @@
   max-height: 520px;
   overflow: auto;
 }
+
+.codeEditor {
+  width: 100%;
+  min-height: 520px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  color: #e6e8ef;
+  outline: none;
+}
+
+.codeEditor[readonly] {
+  opacity: 0.95;
+}
