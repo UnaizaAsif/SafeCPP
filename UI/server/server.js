@@ -11,7 +11,7 @@ app.use(express.json({ limit: "1mb" }));
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const SAMPLES_DIR = path.join(REPO_ROOT, "samples");
-const COMPILER_EXE = path.join(REPO_ROOT, "compiler_test2.exe");
+const COMPILER_EXE = path.join(REPO_ROOT, "compiler_test5.exe");
 
 function listSamples() {
   if (!fs.existsSync(SAMPLES_DIR)) return [];

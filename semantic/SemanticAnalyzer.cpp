@@ -1,7 +1,6 @@
 #include "SemanticAnalyzer.h"
 #include <iostream>
 #include <set>
-#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <unordered_set>
@@ -260,14 +259,34 @@ void SemanticAnalyzer::extractIncludeDirectives() {
         return s.substr(start, end - start + 1);
     };
 
+    // Helper: get filename from path
     auto basename = [](const std::string& path) {
-        return std::filesystem::path(path).filename().string();
+        size_t pos = path.find_last_of("/\\");
+        return (pos == std::string::npos) ? path : path.substr(pos + 1);
+    };
+
+    // Helper: get directory from path
+    auto dirname = [](const std::string& path) {
+        size_t pos = path.find_last_of("/\\");
+        return (pos == std::string::npos) ? "" : path.substr(0, pos);
+    };
+
+    // Helper: join paths
+    auto joinPath = [](const std::string& dir, const std::string& file) {
+        if (dir.empty()) return file;
+        return dir + "/" + file;
+    };
+
+    // Helper: check if file exists
+    auto fileExists = [](const std::string& path) {
+        std::ifstream f(path);
+        return f.good();
     };
 
     std::unordered_set<std::string> visitedFiles;
-    std::function<void(const std::filesystem::path&)> scanFile =
-        [&](const std::filesystem::path& filePath) {
-            std::string canonicalKey = filePath.lexically_normal().string();
+    std::function<void(const std::string&)> scanFile =
+        [&](const std::string& filePath) {
+            std::string canonicalKey = filePath;
             if (visitedFiles.count(canonicalKey)) return;
             visitedFiles.insert(canonicalKey);
 
@@ -285,18 +304,17 @@ void SemanticAnalyzer::extractIncludeDirectives() {
                 if (q1 == std::string::npos || q2 == std::string::npos || q2 <= q1 + 1) continue;
 
                 std::string includeRel = t.substr(q1 + 1, q2 - q1 - 1);
-                std::filesystem::path includePath = filePath.parent_path() / includeRel;
-                includePath = includePath.lexically_normal();
+                std::string parentDir = dirname(filePath);
+                std::string includePath = joinPath(parentDir, includeRel);
 
-                dependencyAnalyzer.addDependency(sourceName, basename(includePath.string()));
+                dependencyAnalyzer.addDependency(sourceName, basename(includePath));
                 scanFile(includePath);
             }
         };
 
     if (!currentFileName.empty()) {
-        std::filesystem::path rootFile(currentFileName);
-        if (std::filesystem::exists(rootFile)) {
-            scanFile(rootFile);
+        if (fileExists(currentFileName)) {
+            scanFile(currentFileName);
             return;
         }
     }
